@@ -84,6 +84,8 @@ class MessageCreate(MessageBase):
 
 class MessageResponse(MessageBase):
     id: int
+    company_id: int
+    campaign_id: Optional[int] = None
     status: MessageStatus
     sent_at: Optional[datetime] = None
     created_at: datetime
@@ -118,6 +120,7 @@ class GenerateCampaignRequest(BaseModel):
     email_template_id: Optional[int] = None
     whatsapp_template_id: Optional[int] = None
     campaign_type: str = "SALES"  # "SALES" or "WEBSITE"
+    fetched_on: Optional[str] = None  # Filter companies by created_at date (YYYY-MM-DD)
 
 
 class BatchActionRequest(BaseModel):

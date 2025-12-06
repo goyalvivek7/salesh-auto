@@ -50,7 +50,7 @@ app = FastAPI(
 # Configure CORS to allow  frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_origins=["*"],  # Vite dev server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -352,15 +352,17 @@ async def generate_campaign(
         db.commit()
         db.refresh(campaign)
         
-        # 2. Fetch target companies
+        # 2. Fetch target companies (optionally filtered by fetched_on date)
         companies = crud.get_companies_by_industry(
             db, 
             industry=request.industry, 
-            limit=request.limit
+            limit=request.limit,
+            fetched_on=request.fetched_on
         )
         
         if not companies:
-            raise HTTPException(status_code=404, detail=f"No companies found for industry: {request.industry}")
+            date_msg = f" fetched on {request.fetched_on}" if request.fetched_on else ""
+            raise HTTPException(status_code=404, detail=f"No companies found for industry: {request.industry}{date_msg}")
         
         # 3. Fetch Templates
         email_template = None
@@ -539,6 +541,160 @@ async def get_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return campaign
+
+
+@app.post("/api/campaigns/{campaign_id}/start-now")
+async def start_campaign_now(
+    campaign_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Start a campaign immediately by sending all INITIAL stage messages (Email & WhatsApp).
+    Follow-up messages will be sent at their scheduled times.
+    """
+    # Get campaign
+    campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    
+    # Get all INITIAL stage DRAFT messages for this campaign
+    initial_messages = db.query(Message).filter(
+        Message.campaign_id == campaign_id,
+        Message.stage == MessageStage.INITIAL,
+        Message.status == MessageStatus.DRAFT
+    ).all()
+    
+    if not initial_messages:
+        return {
+            "message": "No initial messages to send",
+            "sent_count": 0,
+            "failed_count": 0
+        }
+    
+    sent_count = 0
+    failed_count = 0
+    results = []
+    
+    for message in initial_messages:
+        # Get company
+        company = db.query(Company).filter(Company.id == message.company_id).first()
+        if not company:
+            failed_count += 1
+            results.append({
+                "message_id": message.id,
+                "type": message.type.value,
+                "status": "failed",
+                "error": "Company not found"
+            })
+            continue
+        
+        try:
+            if message.type == MessageType.EMAIL:
+                # Send email
+                if not company.email:
+                    failed_count += 1
+                    results.append({
+                        "message_id": message.id,
+                        "type": "EMAIL",
+                        "status": "failed",
+                        "error": "Company email not available"
+                    })
+                    continue
+                
+                html_content = email_service.format_html_email(message.content, message.subject)
+                result = await email_service.send_email_async(
+                    to_email=company.email,
+                    subject=message.subject or "Business Inquiry",
+                    content=html_content,
+                    html=True
+                )
+                
+                if result['status'] == 'sent':
+                    message.status = MessageStatus.SENT
+                    message.sent_at = now_ist()
+                    sent_count += 1
+                    results.append({
+                        "message_id": message.id,
+                        "type": "EMAIL",
+                        "status": "sent",
+                        "to": company.email
+                    })
+                else:
+                    message.status = MessageStatus.FAILED
+                    failed_count += 1
+                    results.append({
+                        "message_id": message.id,
+                        "type": "EMAIL",
+                        "status": "failed",
+                        "error": result.get('error')
+                    })
+                    
+            elif message.type == MessageType.WHATSAPP:
+                # Send WhatsApp
+                if not company.phone:
+                    failed_count += 1
+                    results.append({
+                        "message_id": message.id,
+                        "type": "WHATSAPP",
+                        "status": "failed",
+                        "error": "Company phone not available"
+                    })
+                    continue
+                
+                template_id = whatsapp_service.get_template_id(message.stage.value)
+                params = whatsapp_service.build_template_params(
+                    company_name=company.name,
+                    industry=company.industry,
+                    country=company.country,
+                    stage=message.stage.value
+                )
+                phone = company.phone.replace('+', '').replace('-', '').replace(' ', '')
+                
+                result = whatsapp_service.send_template_message(
+                    to_number=phone,
+                    template_id=template_id,
+                    params=params
+                )
+                
+                if result['status'] == 'sent':
+                    message.status = MessageStatus.SENT
+                    message.sent_at = now_ist()
+                    sent_count += 1
+                    results.append({
+                        "message_id": message.id,
+                        "type": "WHATSAPP",
+                        "status": "sent",
+                        "to": phone
+                    })
+                else:
+                    message.status = MessageStatus.FAILED
+                    failed_count += 1
+                    results.append({
+                        "message_id": message.id,
+                        "type": "WHATSAPP",
+                        "status": "failed",
+                        "error": result.get('error')
+                    })
+                    
+        except Exception as e:
+            message.status = MessageStatus.FAILED
+            failed_count += 1
+            results.append({
+                "message_id": message.id,
+                "type": message.type.value,
+                "status": "failed",
+                "error": str(e)
+            })
+    
+    db.commit()
+    
+    return {
+        "message": f"Campaign started - sent {sent_count} initial messages",
+        "sent_count": sent_count,
+        "failed_count": failed_count,
+        "total": len(initial_messages),
+        "results": results
+    }
 
 
 @app.get("/api/messages")
@@ -1246,15 +1402,17 @@ except Exception as e:
     print(f"⚠️  Could not register automation endpoints: {str(e)}")
 # --- Reply Dashboard Endpoints ---
 try:
-    from app.automation_endpoints import get_all_replies, get_qualified_leads, get_stopped_companies, get_chart_data
+    from app.automation_endpoints import get_all_replies, get_qualified_leads, get_stopped_companies, get_chart_data, get_email_opened_companies, get_detailed_analytics
     
     app.add_api_route("/api/replies", get_all_replies, methods=["GET"])
     app.add_api_route("/api/leads/qualified", get_qualified_leads, methods=["GET"])
     app.add_api_route("/api/companies/stopped", get_stopped_companies, methods=["GET"])
     app.add_api_route("/api/analytics/charts", get_chart_data, methods=["GET"])
-    print(" Reply dashboard endpoints registered successfully")
+    app.add_api_route("/api/companies/opened", get_email_opened_companies, methods=["GET"])
+    app.add_api_route("/api/analytics/detailed", get_detailed_analytics, methods=["GET"])
+    print("✅ Reply dashboard endpoints registered successfully")
 except Exception as e:
-    print(f"  Could not register reply dashboard endpoints: {str(e)}")
+    print(f"⚠️  Could not register reply dashboard endpoints: {str(e)}")
 
 
 # --- Template Endpoints ---

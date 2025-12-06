@@ -1,73 +1,108 @@
-# React + TypeScript + Vite
+# Automatic Sales - Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Modern React + Tailwind CSS dashboard for AI-powered sales automation.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 18** - UI framework
+- **Tailwind CSS 4** - Styling
+- **React Router v6** - Routing
+- **TanStack Query** - Server state management
+- **Recharts** - Charts and analytics
+- **Lucide React** - Icons
+- **Axios** - HTTP client
+- **Vite** - Build tool
 
-## React Compiler
+## Quick Start
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Prerequisites
 
-## Expanding the ESLint configuration
+- Node.js 18+
+- Backend running on `http://localhost:8000`
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Development
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+```bash
+# Install dependencies
+npm install
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Start dev server
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Frontend runs at `http://localhost:5173`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Production Build
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
 ```
+
+## Project Structure
+
+```
+src/
+├── components/     # Reusable UI components
+│   ├── Badge.jsx
+│   ├── Button.jsx
+│   ├── DataTable.jsx
+│   ├── Layout.jsx
+│   ├── Modal.jsx
+│   ├── StatsCard.jsx
+│   └── Toast.jsx
+├── pages/          # Route pages
+│   ├── Analytics.jsx
+│   ├── Campaigns.jsx
+│   ├── Companies.jsx
+│   ├── Dashboard.jsx
+│   ├── Leads.jsx
+│   ├── Messages.jsx
+│   └── Settings.jsx
+├── services/       # API layer
+│   └── api.js
+├── App.jsx         # Main app with routing
+└── index.css       # Tailwind styles
+```
+
+## Features
+
+- **Dashboard** - Overview stats and charts
+- **Companies** - AI-powered company discovery
+- **Campaigns** - Create and manage outreach campaigns
+- **Messages** - View and send messages
+- **Leads** - Qualified leads from replies
+- **Analytics** - Detailed performance metrics
+- **Settings** - App configuration
+
+## Design
+
+- Light theme with gradient accents
+- Responsive sidebar navigation
+- Modern card-based layouts
+- Consistent spacing and typography
+
+## API Proxy
+
+Dev server proxies `/api` requests to backend:
+
+```javascript
+// vite.config.js
+proxy: {
+  '/api': {
+    target: 'http://localhost:8000',
+    changeOrigin: true,
+  },
+}
+```
+
+## Documentation
+
+See `/docs` folder for:
+- BRD.md - Business Requirements
+- PRD.md - Product Requirements
+- FRONTEND-ARCHITECTURE.md - Technical docs
+- API-REFERENCE.md - API documentation

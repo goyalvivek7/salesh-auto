@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from app.database import get_db
 from app.models import AutomationConfig, UnsubscribeList, EmailOpenTracking, Company, Campaign, Message
-from app.enums import MessageStatus
+from app.enums import MessageStatus, MessageType
 from app.services.automation_service import unsubscribe_service, reply_tracking_service
 from app.utils.timezone import now_ist
 
@@ -590,3 +590,209 @@ async def get_chart_data(db: Session = Depends(get_db)):
         current_date += timedelta(days=1)
         
     return data
+
+
+async def get_email_opened_companies(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get companies that have opened emails with pagination."""
+    from app.models import ReplyTracking
+    
+    # Get all message IDs that have been opened
+    opened_message_ids = db.query(EmailOpenTracking.message_id).distinct().all()
+    opened_ids = [o[0] for o in opened_message_ids]
+    
+    # Get companies from those messages
+    opened_companies = []
+    seen_company_ids = set()
+    
+    for message_id in opened_ids:
+        message = db.query(Message).filter(Message.id == message_id).first()
+        if message and message.company_id not in seen_company_ids:
+            company = db.query(Company).filter(Company.id == message.company_id).first()
+            if company:
+                seen_company_ids.add(company.id)
+                
+                # Get open count and first/last open time
+                opens = db.query(EmailOpenTracking).filter(
+                    EmailOpenTracking.message_id.in_(
+                        db.query(Message.id).filter(Message.company_id == company.id)
+                    )
+                ).order_by(EmailOpenTracking.opened_at.desc()).all()
+                
+                # Check if company has replied
+                has_reply = db.query(ReplyTracking).filter(
+                    ReplyTracking.company_id == company.id
+                ).first() is not None
+                
+                opened_companies.append({
+                    "id": company.id,
+                    "name": company.name,
+                    "industry": company.industry,
+                    "country": company.country,
+                    "email": company.email,
+                    "phone": company.phone,
+                    "website": company.website,
+                    "created_at": company.created_at,
+                    "open_count": len(opens),
+                    "first_opened_at": opens[-1].opened_at if opens else None,
+                    "last_opened_at": opens[0].opened_at if opens else None,
+                    "has_reply": has_reply
+                })
+    
+    # Apply search filter
+    if search:
+        search_lower = search.lower()
+        opened_companies = [
+            c for c in opened_companies
+            if search_lower in c["name"].lower() or 
+               search_lower in c["industry"].lower() or
+               search_lower in c["country"].lower()
+        ]
+    
+    # Get total count after filtering
+    total = len(opened_companies)
+    
+    # Calculate pagination
+    skip = (page - 1) * page_size
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+    
+    # Get paginated results
+    paginated_items = opened_companies[skip:skip + page_size]
+    
+    return {
+        "items": paginated_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
+
+async def get_detailed_analytics(
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """Get detailed analytics with response rates by channel."""
+    from app.models import ReplyTracking
+    
+    end_date = now_ist()
+    start_date = end_date - timedelta(days=days)
+    
+    # Total messages by type
+    email_sent = db.query(Message).filter(
+        Message.type == MessageType.EMAIL,
+        Message.status == MessageStatus.SENT,
+        Message.sent_at >= start_date
+    ).count()
+    
+    whatsapp_sent = db.query(Message).filter(
+        Message.type == MessageType.WHATSAPP,
+        Message.status == MessageStatus.SENT,
+        Message.sent_at >= start_date
+    ).count()
+    
+    # Email opens
+    email_opens = db.query(EmailOpenTracking).filter(
+        EmailOpenTracking.opened_at >= start_date
+    ).count()
+    
+    # Unique companies that opened
+    unique_opens = db.query(EmailOpenTracking.message_id).filter(
+        EmailOpenTracking.opened_at >= start_date
+    ).distinct().count()
+    
+    # Replies by source
+    email_replies = db.query(ReplyTracking).filter(
+        ~ReplyTracking.from_email.startswith("whatsapp:"),
+        ReplyTracking.replied_at >= start_date
+    ).count()
+    
+    whatsapp_replies = db.query(ReplyTracking).filter(
+        ReplyTracking.from_email.startswith("whatsapp:"),
+        ReplyTracking.replied_at >= start_date
+    ).count()
+    
+    total_replies = email_replies + whatsapp_replies
+    
+    # Calculate rates
+    email_open_rate = (unique_opens / email_sent * 100) if email_sent > 0 else 0
+    email_reply_rate = (email_replies / email_sent * 100) if email_sent > 0 else 0
+    whatsapp_reply_rate = (whatsapp_replies / whatsapp_sent * 100) if whatsapp_sent > 0 else 0
+    overall_reply_rate = (total_replies / (email_sent + whatsapp_sent) * 100) if (email_sent + whatsapp_sent) > 0 else 0
+    
+    # Daily breakdown for charts
+    daily_data = []
+    current_date = start_date.date()
+    while current_date <= end_date.date():
+        day_email_sent = db.query(Message).filter(
+            Message.type == MessageType.EMAIL,
+            Message.status == MessageStatus.SENT,
+            func.date(Message.sent_at) == current_date
+        ).count()
+        
+        day_whatsapp_sent = db.query(Message).filter(
+            Message.type == MessageType.WHATSAPP,
+            Message.status == MessageStatus.SENT,
+            func.date(Message.sent_at) == current_date
+        ).count()
+        
+        day_opens = db.query(EmailOpenTracking).filter(
+            func.date(EmailOpenTracking.opened_at) == current_date
+        ).count()
+        
+        day_replies = db.query(ReplyTracking).filter(
+            func.date(ReplyTracking.replied_at) == current_date
+        ).count()
+        
+        daily_data.append({
+            "date": current_date.strftime("%Y-%m-%d"),
+            "name": current_date.strftime("%b %d"),
+            "email_sent": day_email_sent,
+            "whatsapp_sent": day_whatsapp_sent,
+            "opens": day_opens,
+            "replies": day_replies
+        })
+        current_date += timedelta(days=1)
+    
+    # Industry breakdown
+    industry_stats = {}
+    companies_with_replies = db.query(ReplyTracking.company_id).distinct().all()
+    for (company_id,) in companies_with_replies:
+        company = db.query(Company).filter(Company.id == company_id).first()
+        if company:
+            industry = company.industry
+            if industry not in industry_stats:
+                industry_stats[industry] = {"replies": 0, "companies": 0}
+            industry_stats[industry]["replies"] += 1
+            industry_stats[industry]["companies"] += 1
+    
+    industry_breakdown = [
+        {"industry": k, "replies": v["replies"], "companies": v["companies"]}
+        for k, v in sorted(industry_stats.items(), key=lambda x: x[1]["replies"], reverse=True)
+    ][:10]  # Top 10 industries
+    
+    return {
+        "period_days": days,
+        "summary": {
+            "total_sent": email_sent + whatsapp_sent,
+            "email_sent": email_sent,
+            "whatsapp_sent": whatsapp_sent,
+            "email_opens": email_opens,
+            "unique_opens": unique_opens,
+            "total_replies": total_replies,
+            "email_replies": email_replies,
+            "whatsapp_replies": whatsapp_replies
+        },
+        "rates": {
+            "email_open_rate": round(email_open_rate, 2),
+            "email_reply_rate": round(email_reply_rate, 2),
+            "whatsapp_reply_rate": round(whatsapp_reply_rate, 2),
+            "overall_reply_rate": round(overall_reply_rate, 2)
+        },
+        "daily_data": daily_data,
+        "industry_breakdown": industry_breakdown
+    }

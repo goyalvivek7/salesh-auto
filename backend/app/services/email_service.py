@@ -7,6 +7,19 @@ from datetime import datetime
 
 from app.config import settings
 from app.utils.timezone import now_ist
+from app.database import SessionLocal
+from app.models import SystemConfig
+
+
+def get_db_setting(key: str, default: str = "") -> str:
+    """Get a setting value from database or return default."""
+    try:
+        db = SessionLocal()
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        db.close()
+        return config.value if config else default
+    except Exception:
+        return default
 
 
 class EmailService:
@@ -14,8 +27,28 @@ class EmailService:
     
     def __init__(self):
         self.provider = settings.email_provider
-        self.from_email = settings.from_email
-        self.from_name = settings.from_name
+    
+    def _get_smtp_settings(self) -> Dict:
+        """Get SMTP settings from database with fallback to .env."""
+        return {
+            'smtp_host': get_db_setting('smtp_server', '') or settings.smtp_host,
+            'smtp_port': int(get_db_setting('smtp_port', '0') or settings.smtp_port),
+            'smtp_username': get_db_setting('smtp_username', '') or settings.smtp_username,
+            'smtp_password': get_db_setting('smtp_password', '') or settings.smtp_password,
+            'from_email': get_db_setting('from_email', '') or settings.from_email,
+            'from_name': get_db_setting('from_name', '') or settings.from_name,
+            'smtp_use_tls': settings.smtp_use_tls
+        }
+    
+    @property
+    def from_email(self):
+        """Get from_email from database with fallback to .env."""
+        return get_db_setting('from_email', '') or settings.from_email
+    
+    @property
+    def from_name(self):
+        """Get from_name from database with fallback to .env."""
+        return get_db_setting('from_name', '') or settings.from_name
     
     async def send_email_async(
         self,
@@ -51,9 +84,12 @@ class EmailService:
     ) -> Dict[str, any]:
         """Send email via SMTP asynchronously."""
         try:
+            # Get fresh settings from database
+            smtp_settings = self._get_smtp_settings()
+            
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
-            msg['From'] = f"{self.from_name} <{self.from_email}>"
+            msg['From'] = f"{smtp_settings['from_name']} <{smtp_settings['from_email']}>"
             msg['To'] = to_email
             
             if html:
@@ -63,14 +99,14 @@ class EmailService:
             msg.attach(part)
             
             smtp_config = {
-                'hostname': settings.smtp_host,
-                'port': settings.smtp_port,
-                'use_tls': settings.smtp_use_tls,
+                'hostname': smtp_settings['smtp_host'],
+                'port': smtp_settings['smtp_port'],
+                'use_tls': smtp_settings['smtp_use_tls'],
             }
             
-            if settings.smtp_username and settings.smtp_password:
-                smtp_config['username'] = settings.smtp_username
-                smtp_config['password'] = settings.smtp_password
+            if smtp_settings['smtp_username'] and smtp_settings['smtp_password']:
+                smtp_config['username'] = smtp_settings['smtp_username']
+                smtp_config['password'] = smtp_settings['smtp_password']
             
             await aiosmtplib.send(msg, **smtp_config)
             

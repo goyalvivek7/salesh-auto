@@ -209,3 +209,54 @@ async def update_notification_settings(
         "message": "Notification preferences updated successfully",
         "updated": updated
     }
+
+
+@router.post("/email/test")
+async def test_email_settings(
+    test_email: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Send a test email to verify SMTP settings are working.
+    
+    Args:
+        test_email: Email address to send test email to
+        
+    Returns:
+        Result of the test email send attempt
+    """
+    from app.services.email_service import email_service
+    
+    try:
+        result = await email_service.send_email_async(
+            to_email=test_email,
+            subject="Test Email - Settings Verification",
+            content="""
+            <h2>SMTP Settings Test</h2>
+            <p>This is a test email to verify your SMTP settings are correctly configured.</p>
+            <p>If you received this email, your email settings are working properly!</p>
+            <p><strong>Sent from:</strong> Automatic Sales Application</p>
+            """,
+            html=True
+        )
+        
+        if result.get("status") == "sent":
+            return {
+                "success": True,
+                "message": f"Test email sent successfully to {test_email}",
+                "details": result
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Failed to send test email",
+                "error": result.get("error", "Unknown error"),
+                "details": result
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "message": "Error sending test email",
+            "error": str(e)
+        }
