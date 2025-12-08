@@ -25,7 +25,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
-        <BrowserRouter>
+        <BrowserRouter basename="/autosalesbot">
           <Layout>
             <Routes>
               <Route path="/" element={<Dashboard />} />

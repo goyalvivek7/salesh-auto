@@ -44,7 +44,8 @@ from app import settings_endpoints
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="API for automated sales outreach with AI-powered messaging"
+    description="API for automated sales outreach with AI-powered messaging",
+    root_path="/autosalesbot/api"  # For deployment behind Nginx at /autosalesbot/api
 )
 
 # Configure CORS to allow  frontend access

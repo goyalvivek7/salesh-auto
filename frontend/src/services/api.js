@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+// In production, API is at /autosalesbot/api; in dev, Vite proxy handles /api
+const API_BASE_URL = import.meta.env.PROD ? '/autosalesbot/api' : '/api';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
