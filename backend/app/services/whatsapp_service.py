@@ -186,7 +186,10 @@ class WhatsAppService:
         industry: str,
         country: str,
         stage: str,
-        is_website_pitch: bool = False
+        is_website_pitch: bool = False,
+        sender_name: str = None,
+        sender_company: str = None,
+        company_desc: str = None
     ) -> List[str]:
         """
         Build template parameters based on stage and type.
@@ -197,17 +200,22 @@ class WhatsAppService:
             country: Country
             stage: Message stage
             is_website_pitch: True if this is a website creation pitch
+            sender_name: Your name (from Settings)
+            sender_company: Your company name (from Settings)
+            company_desc: Your company description (from Settings)
             
         Returns:
             List of parameter values in order matching approved templates
         """
-        sender_name = getattr(settings, 'sender_name', 'Milan')
-        sender_company = getattr(settings, 'sender_company', 'TrueValueInfosoft Pvt Ltd')
-        company_desc = getattr(settings, 'company_description', 'custom software solutions')
+        # Use passed values or fall back to config.py (for backward compatibility)
+        sender_name = sender_name or getattr(settings, 'sender_name', '') or ''
+        sender_company = sender_company or getattr(settings, 'sender_company', '') or ''
+        company_desc = company_desc or getattr(settings, 'company_description', '') or ''
         
-        # CRITICAL: Ensure no null values - WhatsApp API error 131008 if any param is null
+        # These values come from Settings page - must be configured before sending
+        # Fallback to generic values only if truly needed (prevents error 131008)
         company_name = company_name or "there"
-        industry = industry or "Business"
+        industry = industry or "your industry"
         country = country or "your region"
         
         if is_website_pitch:

@@ -53,7 +53,10 @@ async def get_all_settings(db: Session = Depends(get_db)):
     general = {
         "company_name": get_setting(db, "company_name", ""),
         "company_website": get_setting(db, "company_website", ""),
-        "timezone": get_setting(db, "timezone", "UTC"),
+        "company_description": get_setting(db, "company_description", ""),
+        "sender_name": get_setting(db, "sender_name", ""),
+        "sender_position": get_setting(db, "sender_position", ""),
+        "timezone": get_setting(db, "timezone", "Asia/Kolkata"),
         "language": get_setting(db, "language", "en"),
         "theme": get_setting(db, "theme", "dark")
     }
@@ -119,6 +122,18 @@ async def update_general_settings(
     if settings.theme is not None:
         set_setting(db, "theme", settings.theme, "Application Theme")
         updated["theme"] = settings.theme
+    
+    if settings.company_description is not None:
+        set_setting(db, "company_description", settings.company_description, "Company Description")
+        updated["company_description"] = settings.company_description
+    
+    if settings.sender_name is not None:
+        set_setting(db, "sender_name", settings.sender_name, "Sender Name for Outreach")
+        updated["sender_name"] = settings.sender_name
+    
+    if settings.sender_position is not None:
+        set_setting(db, "sender_position", settings.sender_position, "Sender Position/Title")
+        updated["sender_position"] = settings.sender_position
     
     return {
         "message": "General settings updated successfully",
@@ -208,6 +223,33 @@ async def update_notification_settings(
     return {
         "message": "Notification preferences updated successfully",
         "updated": updated
+    }
+
+
+@router.get("/check-required")
+async def check_required_settings(db: Session = Depends(get_db)):
+    """
+    Check if required settings are configured before allowing campaign creation.
+    
+    Returns:
+        Dict with is_configured flag and list of missing settings
+    """
+    required_settings = {
+        "company_name": "Company Name",
+        "sender_name": "Your Name (Sender)",
+        "company_description": "Company Description"
+    }
+    
+    missing = []
+    for key, label in required_settings.items():
+        value = get_setting(db, key, "")
+        if not value or not value.strip():
+            missing.append({"key": key, "label": label})
+    
+    return {
+        "is_configured": len(missing) == 0,
+        "missing_settings": missing,
+        "message": "All required settings configured" if len(missing) == 0 else f"Please configure: {', '.join([m['label'] for m in missing])}"
     }
 
 

@@ -1160,6 +1160,30 @@ async def send_whatsapp_message(
     db: Session = Depends(get_db)
 ):
     """Send a single WhatsApp message using Gupshup templates."""
+    # Get sender settings from database
+    def get_setting(key: str, default: str = "") -> str:
+        config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+        return config.value if config and config.value else default
+    
+    sender_name = get_setting("sender_name")
+    sender_company = get_setting("company_name")
+    company_desc = get_setting("company_description")
+    
+    # Validate required settings are configured
+    missing_settings = []
+    if not sender_name:
+        missing_settings.append("Your Name (sender_name)")
+    if not sender_company:
+        missing_settings.append("Company Name")
+    if not company_desc:
+        missing_settings.append("Company Description")
+    
+    if missing_settings:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Please configure required settings first: {', '.join(missing_settings)}. Go to Settings page."
+        )
+    
     # Get message with company details
     message = db.query(Message).filter(Message.id == message_id).first()
     if not message:
@@ -1181,12 +1205,15 @@ async def send_whatsapp_message(
     # Get template ID based on stage
     template_id = whatsapp_service.get_template_id(message.stage.value)
     
-    # Build template parameters
+    # Build template parameters with settings from database
     params = whatsapp_service.build_template_params(
         company_name=company.name,
-        industry=company.industry or "Business",
+        industry=company.industry or "your industry",
         country=company.country or "your region",
-        stage=message.stage.value
+        stage=message.stage.value,
+        sender_name=sender_name,
+        sender_company=sender_company,
+        company_desc=company_desc
     )
     
     # Clean phone number (remove spaces, dashes, +)

@@ -75,6 +75,7 @@ export const getSettings = () => api.get('/settings');
 export const updateGeneralSettings = (data) => api.put('/settings/general', data);
 export const updateEmailSettings = (data) => api.put('/settings/email', data);
 export const updateNotificationSettings = (data) => api.put('/settings/notifications', data);
+export const checkRequiredSettings = () => api.get('/settings/check-required');
 
 // System
 export const resetDatabase = () => api.delete('/reset-database');

@@ -26,6 +26,9 @@ export default function Settings() {
   const [general, setGeneral] = useState({
     company_name: "",
     company_website: "",
+    company_description: "",
+    sender_name: "",
+    sender_position: "",
     timezone: "Asia/Kolkata",
     language: "en",
   });
@@ -150,14 +153,21 @@ export default function Settings() {
             {/* General Settings */}
             {activeTab === "general" && (
               <div className="space-y-6">
+                {/* Required Settings Alert */}
+                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <p className="text-sm text-indigo-700">
+                    <strong>Required for campaigns:</strong> Company Name, Your Name, and Company Description must be filled before creating campaigns or sending messages.
+                  </p>
+                </div>
+
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    General Settings
+                    Company Information
                   </h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company Name
+                        Company Name <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
@@ -169,8 +179,26 @@ export default function Settings() {
                           })
                         }
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Your Company Name"
+                        placeholder="TrueValueInfosoft Pvt Ltd"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company Description <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={general.company_description}
+                        onChange={(e) =>
+                          setGeneral({
+                            ...general,
+                            company_description: e.target.value,
+                          })
+                        }
+                        rows={2}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="custom software solutions, web development, and mobile apps"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Brief description of your services (used in outreach messages)</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -189,30 +217,79 @@ export default function Settings() {
                         placeholder="https://yourcompany.com"
                       />
                     </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Sender Information
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Timezone
+                        Your Name <span className="text-red-500">*</span>
                       </label>
-                      <select
-                        value={general.timezone}
+                      <input
+                        type="text"
+                        value={general.sender_name}
                         onChange={(e) =>
-                          setGeneral({ ...general, timezone: e.target.value })
+                          setGeneral({
+                            ...general,
+                            sender_name: e.target.value,
+                          })
                         }
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      >
-                        <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                        <option value="America/New_York">
-                          America/New_York (EST)
-                        </option>
-                        <option value="America/Los_Angeles">
-                          America/Los_Angeles (PST)
-                        </option>
-                        <option value="Europe/London">
-                          Europe/London (GMT)
-                        </option>
-                        <option value="UTC">UTC</option>
-                      </select>
+                        placeholder="Milan"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Your name used in email/WhatsApp signatures</p>
                     </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Your Position
+                      </label>
+                      <input
+                        type="text"
+                        value={general.sender_position}
+                        onChange={(e) =>
+                          setGeneral({
+                            ...general,
+                            sender_position: e.target.value,
+                          })
+                        }
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        placeholder="Business Development Manager"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                    Application Settings
+                  </h3>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Timezone
+                    </label>
+                    <select
+                      value={general.timezone}
+                      onChange={(e) =>
+                        setGeneral({ ...general, timezone: e.target.value })
+                      }
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                      <option value="America/New_York">
+                        America/New_York (EST)
+                      </option>
+                      <option value="America/Los_Angeles">
+                        America/Los_Angeles (PST)
+                      </option>
+                      <option value="Europe/London">
+                        Europe/London (GMT)
+                      </option>
+                      <option value="UTC">UTC</option>
+                    </select>
                   </div>
                 </div>
               </div>

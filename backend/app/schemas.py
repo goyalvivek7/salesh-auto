@@ -196,6 +196,9 @@ class GeneralSettingsUpdate(BaseModel):
     """Schema for updating general settings."""
     company_name: Optional[str] = None
     company_website: Optional[str] = None
+    company_description: Optional[str] = None  # Brief description of services
+    sender_name: Optional[str] = None  # Your name for outreach
+    sender_position: Optional[str] = None  # Your position/title
     timezone: Optional[str] = None
     language: Optional[str] = None
     theme: Optional[str] = None  # 'light' or 'dark'
