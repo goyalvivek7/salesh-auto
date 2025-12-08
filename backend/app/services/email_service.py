@@ -286,14 +286,14 @@ Best regards,
         # Build unsubscribe link
         unsubscribe_link = ""
         if unsubscribe_token:
-            base_url = "http://localhost:8000"
+            base_url = "https://truevalueinfosoft.co.in/autosalesbot"
             unsubscribe_url = f"{base_url}/api/unsubscribe/{unsubscribe_token}/confirm"
             unsubscribe_link = f'<br><a href="{unsubscribe_url}" style="color: #718096; text-decoration: none;">Unsubscribe</a>'
         
         # Build tracking pixel
         tracking_pixel = ""
         if message_id:
-            base_url = "http://localhost:8000"
+            base_url = "https://truevalueinfosoft.co.in/autosalesbot"
             tracking_pixel = f'<img src="{base_url}/api/tracking/open/{message_id}" width="1" height="1" style="display:none;" />'
         
         html_template = f"""
@@ -360,6 +360,7 @@ Best regards,
 </html>
 """
         return html_template
+
         """Wrap plain text content in a nice HTML template with unsubscribe link."""
         # Convert plain text to HTML paragraphs if needed
         if not content.strip().startswith('<'):
@@ -369,7 +370,7 @@ Best regards,
         # Build unsubscribe link
         unsubscribe_link = ""
         if unsubscribe_token:
-            base_url = "http://localhost:8000"
+            base_url = "https://truevalueinfosoft.co.in/autosalesbot"
             unsubscribe_url = f"{base_url}/api/unsubscribe/{unsubscribe_token}/confirm"
             unsubscribe_link = f'<br><a href="{unsubscribe_url}" style="color: #718096; text-decoration: none;">Unsubscribe</a>'
         

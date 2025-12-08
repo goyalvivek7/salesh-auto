@@ -1,0 +1,13 @@
+cd /var/www/autosalesbot/autosalesbot && \
+git pull && \
+cd backend && \
+source venv/bin/activate && \
+pip install -r requirements.txt && \
+cd ../frontend && \
+npm install && \
+npm run build && \
+cp -r dist/* /var/www/autosalesbot/ && \
+cd ../backend && \
+pm2 restart autosalesbot-backend && \
+sudo systemctl reload nginx && \
+echo "✅ AutoSalesBot deployment updated successfully!"
