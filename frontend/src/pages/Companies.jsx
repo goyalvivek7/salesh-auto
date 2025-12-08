@@ -24,6 +24,7 @@ import {
   fetchCompaniesFromAI,
   deleteCompanies,
   exportCompanies,
+  updateCompany,
 } from '../services/api';
 
 export default function Companies() {
@@ -47,6 +48,16 @@ export default function Companies() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    industry: '',
+    country: '',
+    email: '',
+    phone: '',
+    website: '',
+  });
+  const [savingCompany, setSavingCompany] = useState(false);
   const [filters, setFilters] = useState({
     industry: 'all',
     country: 'all',
@@ -139,10 +150,55 @@ export default function Companies() {
       setDetailLoading(true);
       const res = await getCompany(row.id);
       setActiveCompany(res.data);
+      setEditMode(false);
     } catch (error) {
       console.error('Failed to load company details:', error);
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const startEditingCompany = () => {
+    if (!activeCompany) return;
+    setEditForm({
+      name: activeCompany.name || '',
+      industry: activeCompany.industry || '',
+      country: activeCompany.country || '',
+      email: activeCompany.email || '',
+      phone: activeCompany.phone || '',
+      website: activeCompany.website || '',
+    });
+    setEditMode(true);
+  };
+
+  const cancelEditingCompany = () => {
+    setEditMode(false);
+  };
+
+  const handleSaveCompany = async (e) => {
+    e.preventDefault();
+    if (!activeCompany) return;
+    try {
+      setSavingCompany(true);
+      const payload = {
+        name: editForm.name || null,
+        industry: editForm.industry || null,
+        country: editForm.country || null,
+        email: editForm.email || null,
+        phone: editForm.phone || null,
+        website: editForm.website || null,
+      };
+      const res = await updateCompany(activeCompany.id, payload);
+      setActiveCompany(res.data);
+      setCompanies((prev) =>
+        prev.map((company) => (company.id === res.data.id ? res.data : company))
+      );
+      setEditMode(false);
+    } catch (error) {
+      console.error('Failed to update company:', error);
+      alert('Failed to update company. Please try again.');
+    } finally {
+      setSavingCompany(false);
     }
   };
 
@@ -664,6 +720,7 @@ export default function Companies() {
         onClose={() => {
           setDetailOpen(false);
           setActiveCompany(null);
+          setEditMode(false);
         }}
         title="Company details"
         size="xl"
@@ -721,25 +778,126 @@ export default function Companies() {
               {/* Left: basic info + recent messages */}
               <div className="lg:col-span-2 space-y-4">
                 <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm shadow-slate-100">
-                  <h3 className="text-sm font-semibold text-slate-900 mb-3">Basic information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-slate-400 text-xs">Email</p>
-                      <p className="text-slate-700 break-all">{activeCompany.email || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 text-xs">Phone</p>
-                      <p className="text-slate-700">{activeCompany.phone || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 text-xs">Country</p>
-                      <p className="text-slate-700">{activeCompany.country}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400 text-xs">Website</p>
-                      <p className="text-slate-700 break-all">{activeCompany.website || '—'}</p>
-                    </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-slate-900">Basic information</h3>
+                    {activeCompany && (
+                      <button
+                        type="button"
+                        onClick={editMode ? cancelEditingCompany : startEditingCompany}
+                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                      >
+                        {editMode ? 'Cancel' : 'Edit'}
+                      </button>
+                    )}
                   </div>
+                  {editMode ? (
+                    <form
+                      className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm"
+                      onSubmit={handleSaveCompany}
+                    >
+                      <div>
+                        <p className="text-slate-400 text-xs">Name</p>
+                        <input
+                          type="text"
+                          value={editForm.name}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                          }
+                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Industry</p>
+                        <input
+                          type="text"
+                          value={editForm.industry}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({ ...prev, industry: e.target.value }))
+                          }
+                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Country</p>
+                        <input
+                          type="text"
+                          value={editForm.country}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({ ...prev, country: e.target.value }))
+                          }
+                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Email</p>
+                        <input
+                          type="email"
+                          value={editForm.email}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({ ...prev, email: e.target.value }))
+                          }
+                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Phone</p>
+                        <input
+                          type="text"
+                          value={editForm.phone}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({ ...prev, phone: e.target.value }))
+                          }
+                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Website</p>
+                        <input
+                          type="text"
+                          value={editForm.website}
+                          onChange={(e) =>
+                            setEditForm((prev) => ({ ...prev, website: e.target.value }))
+                          }
+                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="md:col-span-2 flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={cancelEditingCompany}
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={savingCompany}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {savingCompany ? 'Saving...' : 'Save changes'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-slate-400 text-xs">Email</p>
+                        <p className="text-slate-700 break-all">{activeCompany.email || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Phone</p>
+                        <p className="text-slate-700">{activeCompany.phone || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Country</p>
+                        <p className="text-slate-700">{activeCompany.country}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-400 text-xs">Website</p>
+                        <p className="text-slate-700 break-all">{activeCompany.website || '—'}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm shadow-slate-100">
