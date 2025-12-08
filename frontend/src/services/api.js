@@ -37,17 +37,16 @@ export const updateTemplate = (id, data) => api.put(`/templates/${id}`, data);
 export const deleteTemplate = (id) => api.delete(`/templates/${id}`);
 
 // Automation & Stats
-// Backend routes (see main.py):
-// - /api/automation/stats
-// - /api/automation/config  (GET/POST)
-// - /api/automation/{id}/start | /stop
-// - /api/analytics/charts
-// - /api/analytics/detailed
 export const getAutomationStats = () => api.get('/automation/stats');
 export const getAutomationConfigs = () => api.get('/automation/config');
+export const getAutomationConfig = (id) => api.get(`/automation/config/${id}`);
 export const createAutomationConfig = (data) => api.post('/automation/config', data);
+export const updateAutomationConfig = (id, data) => api.put(`/automation/config/${id}`, data);
+export const deleteAutomationConfig = (id) => api.delete(`/automation/config/${id}`);
 export const startAutomation = (id) => api.post(`/automation/${id}/start`);
 export const stopAutomation = (id) => api.post(`/automation/${id}/stop`);
+export const resumeAutomation = (id) => api.post(`/automation/${id}/resume`);
+export const runAutomationNow = (id) => api.post(`/automation/${id}/run-now`);
 export const getChartData = () => api.get('/analytics/charts');
 export const getDetailedAnalytics = (days = 30) =>
   api.get('/analytics/detailed', { params: { days } });

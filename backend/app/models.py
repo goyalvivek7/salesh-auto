@@ -138,13 +138,24 @@ class AutomationConfig(Base):
     __tablename__ = "automation_configs"
     
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=True)  # User-friendly name for the automation
     industry = Column(String, nullable=False)
     country = Column(String, nullable=False)
     daily_limit = Column(Integer, default=30)  # Number of companies to fetch daily
-    is_active = Column(Boolean, default=True)  # Whether automation is running
+    is_active = Column(Boolean, default=False)  # Whether automation is running
+    status = Column(String, default="draft")  # draft, scheduled, running, paused, completed
     send_time_hour = Column(Integer, default=10)  # Hour to send emails (0-23)
+    send_time_minute = Column(Integer, default=0)  # Minute to send emails
     followup_day_1 = Column(Integer, default=3)  # Days until first follow-up
     followup_day_2 = Column(Integer, default=7)  # Days until second follow-up
+    run_duration_days = Column(Integer, default=7)  # How many days to run this automation
+    start_date = Column(DateTime, nullable=True)  # When the automation was started
+    end_date = Column(DateTime, nullable=True)  # When the automation should end
+    # Stats tracking
+    total_companies_fetched = Column(Integer, default=0)
+    total_messages_sent = Column(Integer, default=0)
+    total_replies = Column(Integer, default=0)
+    days_completed = Column(Integer, default=0)
     created_at = Column(DateTime, default=now_ist)
     last_run_at = Column(DateTime, nullable=True)  # Last time companies were fetched
 

@@ -17,6 +17,7 @@ import {
 
 const navItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/automation', icon: Zap, label: 'Automation' },
   { path: '/companies', icon: Building2, label: 'Companies' },
   { path: '/opened', icon: Eye, label: 'Email Opened' },
   { path: '/campaigns', icon: Megaphone, label: 'Campaigns' },

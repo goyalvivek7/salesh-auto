@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Layout from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import Dashboard from './pages/Dashboard';
+import Automation from './pages/Automation';
 import Companies from './pages/Companies';
 import EmailOpenedCompanies from './pages/EmailOpenedCompanies';
 import Campaigns from './pages/Campaigns';
@@ -28,6 +29,7 @@ function App() {
           <Layout>
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/automation" element={<Automation />} />
               <Route path="/companies" element={<Companies />} />
               <Route path="/opened" element={<EmailOpenedCompanies />} />
               <Route path="/campaigns" element={<Campaigns />} />

@@ -22,22 +22,13 @@ class SchedulerService:
     
     def start(self):
         """Start the scheduler and register all jobs."""
-        # Daily company fetch - runs at 2 AM
+        # Automation runner - checks every 30 minutes which automations
+        # are due to run based on their configured send time.
         self.scheduler.add_job(
-            self.daily_company_fetch_job,
-            'cron',
-            hour=2,
-            minute=0,
-            id='daily_company_fetch'
-        )
-        
-        # Daily campaign generation - runs at 3 AM
-        self.scheduler.add_job(
-            self.daily_campaign_generation_job,
-            'cron',
-            hour=3,
-            minute=0,
-            id='daily_campaign_generation'
+            self.automation_runner_job,
+            'interval',
+            minutes=30,
+            id='automation_runner'
         )
         
         # Message sender - runs every 30 minutes
@@ -64,6 +55,68 @@ class SchedulerService:
         self.scheduler.shutdown()
         print("✅ Scheduler stopped")
     
+    async def automation_runner_job(self):
+        """Decide which automations should run right now based on user send time.
+
+        This runs every 30 minutes and, for each running automation,
+        checks if today's run has already happened. If not and the current time
+        is past the configured send_time_hour/send_time_minute, it triggers a
+        single automation run (fetch companies + create campaign & messages).
+        """
+        print(f"[{datetime.now()}] Running automation runner job...")
+
+        db = SessionLocal()
+        try:
+            now = now_ist()
+            today = now.date()
+
+            configs = db.query(AutomationConfig).filter(
+                AutomationConfig.is_active == True,
+                AutomationConfig.status == "running"
+            ).all()
+
+            if not configs:
+                print("No running automations found")
+                return
+
+            for config in configs:
+                # If automation reached end date, mark as completed
+                if config.end_date and now > config.end_date:
+                    config.status = "completed"
+                    config.is_active = False
+                    db.commit()
+                    print(f"✅ Automation {config.name or config.industry} completed (end date reached)")
+                    continue
+
+                # If already ran today, skip
+                if config.last_run_at and config.last_run_at.date() >= today:
+                    continue
+
+                # Compute today's scheduled run time in IST
+                scheduled_time = now.replace(
+                    hour=config.send_time_hour,
+                    minute=config.send_time_minute or 0,
+                    second=0,
+                    microsecond=0,
+                )
+
+                # If current time is past scheduled time, run automation for today
+                if now >= scheduled_time:
+                    print(
+                        f"⏱️ Automation {config.name or config.industry} is due for today "
+                        f"at {scheduled_time.time()} – triggering run_single_automation"
+                    )
+                    try:
+                        # Use the same db session so stats are updated consistently
+                        await self.run_single_automation(config.id, db)
+                    except Exception as e:
+                        print(
+                            f"❌ Error running scheduled automation for config {config.id}: {str(e)}"
+                        )
+                        db.rollback()
+        finally:
+            db.close()
+    
     async def daily_company_fetch_job(self):
         """Fetch companies daily based on automation config."""
         print(f"[{datetime.now()}] Running daily company fetch job...")
@@ -72,7 +125,8 @@ class SchedulerService:
         try:
             # Get all active automation configs
             configs = db.query(AutomationConfig).filter(
-                AutomationConfig.is_active == True
+                AutomationConfig.is_active == True,
+                AutomationConfig.status == "running"
             ).all()
             
             if not configs:
@@ -80,6 +134,13 @@ class SchedulerService:
                 return
             
             for config in configs:
+                # Check if automation has completed its run duration
+                if config.end_date and now_ist() > config.end_date:
+                    config.status = "completed"
+                    config.is_active = False
+                    db.commit()
+                    print(f"✅ Automation {config.name or config.industry} completed (reached end date)")
+                    continue
                 print(f"Fetching {config.daily_limit} companies for {config.industry} in {config.country}")
                 
                 try:
@@ -151,8 +212,10 @@ class SchedulerService:
                     
                     db.commit()
                     
-                    # Update last run time
+                    # Update last run time and stats
                     config.last_run_at = now_ist()
+                    config.total_companies_fetched = (config.total_companies_fetched or 0) + len(companies_data)
+                    config.days_completed = (config.days_completed or 0) + 1
                     db.commit()
                     
                     print(f"✅ Fetched {len(companies_data)} companies for {config.industry}")
@@ -172,7 +235,8 @@ class SchedulerService:
         try:
             # Get all active automation configs
             configs = db.query(AutomationConfig).filter(
-                AutomationConfig.is_active == True
+                AutomationConfig.is_active == True,
+                AutomationConfig.status == "running"
             ).all()
             
             for config in configs:
@@ -557,6 +621,281 @@ class SchedulerService:
         
         finally:
             db.close()
+
+
+    async def run_single_automation(self, config_id: int, db: Session = None):
+        """Run automation for a single config (manual trigger)."""
+        close_db = False
+        if db is None:
+            db = SessionLocal()
+            close_db = True
+        
+        try:
+            config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
+            if not config:
+                raise Exception(f"Config {config_id} not found")
+            
+            print(f"🚀 Running automation for {config.name or config.industry}")
+            
+            # Check if automation has completed its run duration
+            if config.status == "running" and config.end_date and now_ist() > config.end_date:
+                config.status = "completed"
+                config.is_active = False
+                db.commit()
+                print(f"✅ Automation {config.name} completed (reached end date)")
+                return
+            
+            # Fetch companies
+            print(f"Fetching {config.daily_limit} companies for {config.industry} in {config.country}")
+            
+            try:
+                # Get company names using GPT
+                companies_data = gpt_service.fetch_companies(
+                    industry=config.industry,
+                    country=config.country,
+                    count=config.daily_limit
+                )
+                
+                companies_created = 0
+                # For each company, search for real contact details
+                for company_data in companies_data:
+                    company_name = company_data.get("name")
+                    
+                    # Try Google Search for real contact details
+                    google_results = google_search_service.search_company_details(
+                        company_name=company_name,
+                        industry=config.industry,
+                        country=config.country
+                    )
+                    
+                    emails = google_results.get('emails', [])
+                    phones = google_results.get('phones', [])
+                    website = google_results.get('website') or company_data.get("website")
+                    
+                    if not emails and not phones:
+                        if company_data.get("email"):
+                            emails = [company_data.get("email")]
+                        if company_data.get("phone"):
+                            phones = [company_data.get("phone")]
+                    
+                    # Create company record
+                    company = Company(
+                        name=company_name,
+                        industry=config.industry,
+                        country=config.country,
+                        website=website,
+                        email=emails[0] if emails else company_data.get("email"),
+                        phone=phones[0] if phones else company_data.get("phone")
+                    )
+                    db.add(company)
+                    db.flush()
+                    
+                    # Add emails to CompanyEmail table
+                    for idx, email in enumerate(emails):
+                        company_email = CompanyEmail(
+                            company_id=company.id,
+                            email=email,
+                            is_primary=(idx == 0),
+                            is_verified=False
+                        )
+                        db.add(company_email)
+                    
+                    # Add phones to CompanyPhone table
+                    for idx, phone in enumerate(phones):
+                        company_phone = CompanyPhone(
+                            company_id=company.id,
+                            phone=phone,
+                            is_primary=(idx == 0),
+                            is_verified=False
+                        )
+                        db.add(company_phone)
+                    
+                    companies_created += 1
+                    print(f"✅ Added {company_name}")
+                
+                db.commit()
+                
+                # Update config stats
+                config.total_companies_fetched = (config.total_companies_fetched or 0) + companies_created
+                config.last_run_at = now_ist()
+                config.days_completed = (config.days_completed or 0) + 1
+                db.commit()
+                
+                print(f"✅ Fetched {companies_created} companies")
+                
+            except Exception as e:
+                print(f"❌ Error fetching companies: {str(e)}")
+                db.rollback()
+                raise
+            
+            # Now generate campaign for these companies
+            await self._generate_campaign_for_config(config, db)
+            
+        finally:
+            if close_db:
+                db.close()
+    
+    async def _generate_campaign_for_config(self, config: AutomationConfig, db: Session):
+        """Generate campaign for newly fetched companies."""
+        # Get companies fetched today for this config
+        today_start = now_ist().replace(hour=0, minute=0, second=0, microsecond=0)
+        new_companies = db.query(Company).filter(
+            Company.industry == config.industry,
+            Company.country == config.country,
+            Company.created_at >= today_start
+        ).all()
+        
+        if not new_companies:
+            print(f"No new companies found for campaign generation")
+            return
+        
+        # Create campaign
+        campaign_name = f"{config.name or config.industry} - {now_ist().strftime('%Y-%m-%d')}"
+        campaign = Campaign(
+            name=campaign_name,
+            industry=config.industry
+        )
+        db.add(campaign)
+        db.commit()
+        
+        print(f"Created campaign: {campaign_name}")
+        
+        messages_created = 0
+        # Generate messages for each company
+        for company in new_companies:
+            try:
+                has_website = bool(company.website)
+                
+                if not has_website:
+                    email_content = gpt_service.generate_website_pitch(
+                        company_name=company.name,
+                        industry=company.industry,
+                        country=company.country,
+                        platform="email",
+                        stage="initial"
+                    )
+                    whatsapp_content = gpt_service.generate_website_pitch(
+                        company_name=company.name,
+                        industry=company.industry,
+                        country=company.country,
+                        platform="whatsapp",
+                        stage="initial"
+                    )
+                else:
+                    email_content = gpt_service.generate_outreach_content(
+                        company_name=company.name,
+                        industry=company.industry,
+                        country=company.country,
+                        platform="email",
+                        stage="initial"
+                    )
+                    whatsapp_content = gpt_service.generate_outreach_content(
+                        company_name=company.name,
+                        industry=company.industry,
+                        country=company.country,
+                        platform="whatsapp",
+                        stage="initial"
+                    )
+                
+                # Get send times
+                now = now_ist()
+                today_send_time = now.replace(
+                    hour=config.send_time_hour,
+                    minute=config.send_time_minute or 0,
+                    second=0,
+                    microsecond=0
+                )
+                if today_send_time < now:
+                    today_send_time += timedelta(days=1)
+                
+                # Check if phone is valid
+                primary_phone = company.primary_phone
+                is_demo_phone = False
+                if primary_phone:
+                    clean_phone = ''.join(filter(str.isdigit, primary_phone))
+                    demo_numbers = ['987654321', '9876543210', '1234567890', '0000000000']
+                    is_demo_phone = any(demo in clean_phone for demo in demo_numbers)
+                
+                # Create messages
+                messages = [
+                    Message(
+                        company_id=company.id,
+                        campaign_id=campaign.id,
+                        type=MessageType.EMAIL,
+                        stage=MessageStage.INITIAL,
+                        content=email_content.get("content", ""),
+                        subject=email_content.get("subject", "Business Opportunity"),
+                        status=MessageStatus.DRAFT,
+                        scheduled_for=today_send_time
+                    ),
+                    Message(
+                        company_id=company.id,
+                        campaign_id=campaign.id,
+                        type=MessageType.EMAIL,
+                        stage=MessageStage.FOLLOWUP_1,
+                        content=email_content.get("content", ""),
+                        subject=f"Re: {email_content.get('subject', 'Follow-up')}",
+                        status=MessageStatus.DRAFT,
+                        scheduled_for=today_send_time + timedelta(days=config.followup_day_1)
+                    ),
+                    Message(
+                        company_id=company.id,
+                        campaign_id=campaign.id,
+                        type=MessageType.EMAIL,
+                        stage=MessageStage.FOLLOWUP_2,
+                        content=email_content.get("content", ""),
+                        subject=f"Re: {email_content.get('subject', 'Final follow-up')}",
+                        status=MessageStatus.DRAFT,
+                        scheduled_for=today_send_time + timedelta(days=config.followup_day_2)
+                    )
+                ]
+                
+                if not is_demo_phone and primary_phone:
+                    messages.extend([
+                        Message(
+                            company_id=company.id,
+                            campaign_id=campaign.id,
+                            type=MessageType.WHATSAPP,
+                            stage=MessageStage.INITIAL,
+                            content=whatsapp_content.get("content", ""),
+                            status=MessageStatus.DRAFT,
+                            scheduled_for=today_send_time
+                        ),
+                        Message(
+                            company_id=company.id,
+                            campaign_id=campaign.id,
+                            type=MessageType.WHATSAPP,
+                            stage=MessageStage.FOLLOWUP_1,
+                            content=whatsapp_content.get("content", ""),
+                            status=MessageStatus.DRAFT,
+                            scheduled_for=today_send_time + timedelta(days=config.followup_day_1)
+                        ),
+                        Message(
+                            company_id=company.id,
+                            campaign_id=campaign.id,
+                            type=MessageType.WHATSAPP,
+                            stage=MessageStage.FOLLOWUP_2,
+                            content=whatsapp_content.get("content", ""),
+                            status=MessageStatus.DRAFT,
+                            scheduled_for=today_send_time + timedelta(days=config.followup_day_2)
+                        )
+                    ])
+                
+                for msg in messages:
+                    db.add(msg)
+                
+                messages_created += len(messages)
+                db.commit()
+                print(f"✅ Generated {len(messages)} messages for {company.name}")
+                
+            except Exception as e:
+                print(f"❌ Error generating messages for {company.name}: {str(e)}")
+                db.rollback()
+        
+        # Update config stats
+        config.total_messages_sent = (config.total_messages_sent or 0) + messages_created
+        db.commit()
+        print(f"✅ Campaign created with {messages_created} messages")
 
 
 # Global instance

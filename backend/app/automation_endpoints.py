@@ -15,41 +15,97 @@ from app.utils.timezone import now_ist
 
 
 class AutomationConfigCreate(BaseModel):
+    name: str = None
     industry: str
     country: str
     daily_limit: int = 30
     send_time_hour: int = 10
+    send_time_minute: int = 0
     followup_day_1: int = 3
     followup_day_2: int = 7
+    run_duration_days: int = 7
+
+
+class AutomationConfigUpdate(BaseModel):
+    name: str = None
+    daily_limit: int = None
+    send_time_hour: int = None
+    send_time_minute: int = None
+    followup_day_1: int = None
+    followup_day_2: int = None
+    run_duration_days: int = None
 
 
 async def create_automation_config(
     config: AutomationConfigCreate,
     db: Session = Depends(get_db)
 ):
-    """Create or update automation configuration."""
-    # Check if config exists
-    existing = db.query(AutomationConfig).filter(
-        AutomationConfig.industry == config.industry,
-        AutomationConfig.country == config.country
-    ).first()
+    """Create a new automation configuration."""
+    # Generate a default name if not provided
+    name = config.name or f"{config.industry} - {config.country} Automation"
     
-    if existing:
-        # Update existing
+    new_config = AutomationConfig(
+        name=name,
+        industry=config.industry,
+        country=config.country,
+        daily_limit=config.daily_limit,
+        send_time_hour=config.send_time_hour,
+        send_time_minute=config.send_time_minute,
+        followup_day_1=config.followup_day_1,
+        followup_day_2=config.followup_day_2,
+        run_duration_days=config.run_duration_days,
+        status="draft",
+        is_active=False
+    )
+    db.add(new_config)
+    db.commit()
+    db.refresh(new_config)
+    return new_config
+
+
+async def update_automation_config(
+    config_id: int,
+    config: AutomationConfigUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update an existing automation configuration."""
+    existing = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Automation config not found")
+    
+    # Only update fields that are provided
+    if config.name is not None:
+        existing.name = config.name
+    if config.daily_limit is not None:
         existing.daily_limit = config.daily_limit
+    if config.send_time_hour is not None:
         existing.send_time_hour = config.send_time_hour
+    if config.send_time_minute is not None:
+        existing.send_time_minute = config.send_time_minute
+    if config.followup_day_1 is not None:
         existing.followup_day_1 = config.followup_day_1
+    if config.followup_day_2 is not None:
         existing.followup_day_2 = config.followup_day_2
-        db.commit()
-        db.refresh(existing)
-        return existing
-    else:
-        # Create new
-        new_config = AutomationConfig(**config.dict())
-        db.add(new_config)
-        db.commit()
-        db.refresh(new_config)
-        return new_config
+    if config.run_duration_days is not None:
+        existing.run_duration_days = config.run_duration_days
+    
+    db.commit()
+    db.refresh(existing)
+    return existing
+
+
+async def delete_automation_config(
+    config_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete an automation configuration."""
+    config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Automation config not found")
+    
+    db.delete(config)
+    db.commit()
+    return {"message": "Automation deleted successfully"}
 
 
 async def get_automation_configs(db: Session = Depends(get_db)):
@@ -58,26 +114,92 @@ async def get_automation_configs(db: Session = Depends(get_db)):
     return configs
 
 
+async def get_automation_config(config_id: int, db: Session = Depends(get_db)):
+    """Get a single automation configuration by ID."""
+    config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Automation config not found")
+    return config
+
+
 async def start_automation(config_id: int, db: Session = Depends(get_db)):
     """Start automation for a specific config."""
     config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Config not found")
     
+    # Set start and end dates
+    start = now_ist()
+    end = start + timedelta(days=config.run_duration_days)
+    
     config.is_active = True
+    config.status = "running"
+    config.start_date = start
+    config.end_date = end
+    config.days_completed = 0
     db.commit()
+    db.refresh(config)
+
+    # Immediately trigger the first run so companies & messages are created
+    # instead of waiting for the nightly scheduler.
+    try:
+        from app.services.scheduler_service import scheduler_service
+        # Re‑use the same DB session so stats (last_run_at, totals) are updated.
+        await scheduler_service.run_single_automation(config.id, db)
+    except Exception as e:
+        # Don't fail the start API if the initial batch fails; user can still
+        # use the "Run Now" button to retry.
+        print(f"Error running initial automation batch for config {config.id}: {str(e)}")
+    
     return {"message": "Automation started", "config": config}
 
 
 async def stop_automation(config_id: int, db: Session = Depends(get_db)):
-    """Stop automation for a specific config."""
+    """Stop/pause automation for a specific config."""
     config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=404, detail="Config not found")
     
     config.is_active = False
+    config.status = "paused"
     db.commit()
-    return {"message": "Automation stopped", "config": config}
+    db.refresh(config)
+    return {"message": "Automation paused", "config": config}
+
+
+async def resume_automation(config_id: int, db: Session = Depends(get_db)):
+    """Resume a paused automation."""
+    config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+    
+    if config.status != "paused":
+        raise HTTPException(status_code=400, detail="Can only resume paused automations")
+    
+    # Extend end date by remaining days
+    remaining_days = config.run_duration_days - config.days_completed
+    config.end_date = now_ist() + timedelta(days=remaining_days)
+    config.is_active = True
+    config.status = "running"
+    db.commit()
+    db.refresh(config)
+    return {"message": "Automation resumed", "config": config}
+
+
+async def run_automation_now(config_id: int, db: Session = Depends(get_db)):
+    """Manually trigger an automation run (fetch companies + create campaign)."""
+    from app.services.scheduler_service import scheduler_service
+    
+    config = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Config not found")
+    
+    # Run the daily jobs for this specific config
+    try:
+        await scheduler_service.run_single_automation(config.id, db)
+        return {"message": "Automation run triggered successfully", "config_id": config.id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to run automation: {str(e)}")
 
 
 async def get_automation_stats(db: Session = Depends(get_db)):

@@ -1373,10 +1373,16 @@ async def send_whatsapp_message(
 try:
     from app.automation_endpoints import (
         AutomationConfigCreate,
+        AutomationConfigUpdate,
         create_automation_config,
         get_automation_configs,
+        get_automation_config,
+        update_automation_config,
+        delete_automation_config,
         start_automation,
         stop_automation,
+        resume_automation,
+        run_automation_now,
         get_automation_stats,
         unsubscribe,
         unsubscribe_confirm_page,
@@ -1388,8 +1394,13 @@ try:
     # Register automation endpoints
     app.add_api_route("/api/automation/config", create_automation_config, methods=["POST"])
     app.add_api_route("/api/automation/config", get_automation_configs, methods=["GET"])
+    app.add_api_route("/api/automation/config/{config_id}", get_automation_config, methods=["GET"])
+    app.add_api_route("/api/automation/config/{config_id}", update_automation_config, methods=["PUT"])
+    app.add_api_route("/api/automation/config/{config_id}", delete_automation_config, methods=["DELETE"])
     app.add_api_route("/api/automation/{config_id}/start", start_automation, methods=["POST"])
     app.add_api_route("/api/automation/{config_id}/stop", stop_automation, methods=["POST"])
+    app.add_api_route("/api/automation/{config_id}/resume", resume_automation, methods=["POST"])
+    app.add_api_route("/api/automation/{config_id}/run-now", run_automation_now, methods=["POST"])
     app.add_api_route("/api/automation/stats", get_automation_stats, methods=["GET"])
     app.add_api_route("/api/unsubscribe/{token}", unsubscribe, methods=["POST"])
     app.add_api_route("/api/unsubscribe/{token}/confirm", unsubscribe_confirm_page, methods=["GET"])
