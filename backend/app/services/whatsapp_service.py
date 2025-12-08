@@ -205,6 +205,11 @@ class WhatsAppService:
         sender_company = getattr(settings, 'sender_company', 'TrueValueInfosoft Pvt Ltd')
         company_desc = getattr(settings, 'company_description', 'custom software solutions')
         
+        # CRITICAL: Ensure no null values - WhatsApp API error 131008 if any param is null
+        company_name = company_name or "there"
+        industry = industry or "Business"
+        country = country or "your region"
+        
         if is_website_pitch:
             # Website pitch templates
             if stage == "INITIAL":
