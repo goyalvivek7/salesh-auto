@@ -60,10 +60,13 @@ export const getDetailedAnalytics = (days = 30) =>
 // - /api/replies
 // - /api/companies/stopped
 // - /api/companies/opened
+// - /api/companies/unsubscribed
 export const getQualifiedLeads = () => api.get('/leads/qualified');
 export const getAllReplies = () => api.get('/replies');
 export const getStoppedCompanies = (params) => api.get('/companies/stopped', { params });
 export const getEmailOpenedCompanies = (params) => api.get('/companies/opened', { params });
+export const getUnsubscribedCompanies = (params) => api.get('/companies/unsubscribed', { params });
+export const removeFromUnsubscribeList = (id) => api.delete(`/companies/unsubscribed/${id}`);
 export const exportLeads = () => api.get('/leads/export', { responseType: 'blob' });
 
 // Settings

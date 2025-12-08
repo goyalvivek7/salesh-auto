@@ -13,6 +13,7 @@ import {
   Mail,
   TrendingUp,
   Eye,
+  UserX,
 } from 'lucide-react';
 
 const navItems = [
@@ -20,6 +21,7 @@ const navItems = [
   { path: '/automation', icon: Zap, label: 'Automation' },
   { path: '/companies', icon: Building2, label: 'Companies' },
   { path: '/opened', icon: Eye, label: 'Email Opened' },
+  { path: '/unsubscribed', icon: UserX, label: 'Unsubscribed' },
   { path: '/campaigns', icon: Megaphone, label: 'Campaigns' },
   { path: '/messages', icon: MessageSquare, label: 'Messages' },
   { path: '/leads', icon: Users, label: 'Leads' },

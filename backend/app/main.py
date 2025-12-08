@@ -1414,13 +1414,15 @@ except Exception as e:
     print(f"⚠️  Could not register automation endpoints: {str(e)}")
 # --- Reply Dashboard Endpoints ---
 try:
-    from app.automation_endpoints import get_all_replies, get_qualified_leads, get_stopped_companies, get_chart_data, get_email_opened_companies, get_detailed_analytics
+    from app.automation_endpoints import get_all_replies, get_qualified_leads, get_stopped_companies, get_chart_data, get_email_opened_companies, get_detailed_analytics, get_unsubscribed_companies, remove_from_unsubscribe_list
     
     app.add_api_route("/api/replies", get_all_replies, methods=["GET"])
     app.add_api_route("/api/leads/qualified", get_qualified_leads, methods=["GET"])
     app.add_api_route("/api/companies/stopped", get_stopped_companies, methods=["GET"])
     app.add_api_route("/api/analytics/charts", get_chart_data, methods=["GET"])
     app.add_api_route("/api/companies/opened", get_email_opened_companies, methods=["GET"])
+    app.add_api_route("/api/companies/unsubscribed", get_unsubscribed_companies, methods=["GET"])
+    app.add_api_route("/api/companies/unsubscribed/{unsubscribe_id}", remove_from_unsubscribe_list, methods=["DELETE"])
     app.add_api_route("/api/analytics/detailed", get_detailed_analytics, methods=["GET"])
     print("✅ Reply dashboard endpoints registered successfully")
 except Exception as e:

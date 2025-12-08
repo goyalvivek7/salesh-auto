@@ -770,9 +770,9 @@ async def get_email_opened_companies(
         search_lower = search.lower()
         opened_companies = [
             c for c in opened_companies
-            if search_lower in c["name"].lower() or 
-               search_lower in c["industry"].lower() or
-               search_lower in c["country"].lower()
+            if search_lower in (c["name"] or "").lower() or 
+               search_lower in (c["industry"] or "").lower() or
+               search_lower in (c["country"] or "").lower()
         ]
     
     # Get total count after filtering
@@ -918,3 +918,83 @@ async def get_detailed_analytics(
         "daily_data": daily_data,
         "industry_breakdown": industry_breakdown
     }
+
+
+async def get_unsubscribed_companies(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get all companies that have unsubscribed from emails with pagination."""
+    
+    # Get all unsubscribed entries with company details
+    unsubscribed_entries = db.query(UnsubscribeList).order_by(UnsubscribeList.unsubscribed_at.desc()).all()
+    
+    unsubscribed_companies = []
+    
+    for entry in unsubscribed_entries:
+        company = None
+        if entry.company_id:
+            company = db.query(Company).filter(Company.id == entry.company_id).first()
+        
+        # If no company_id, try to find by email
+        if not company and entry.email:
+            company = db.query(Company).filter(Company.email == entry.email).first()
+        
+        unsubscribed_companies.append({
+            "id": entry.id,
+            "company_id": company.id if company else None,
+            "name": company.name if company else "Unknown",
+            "industry": company.industry if company else None,
+            "country": company.country if company else None,
+            "email": entry.email,
+            "phone": company.phone if company else None,
+            "website": company.website if company else None,
+            "reason": entry.reason,
+            "unsubscribed_at": entry.unsubscribed_at
+        })
+    
+    # Apply search filter
+    if search:
+        search_lower = search.lower()
+        unsubscribed_companies = [
+            c for c in unsubscribed_companies
+            if search_lower in (c["name"] or "").lower() or 
+               search_lower in (c["email"] or "").lower() or
+               search_lower in (c["industry"] or "").lower() or
+               search_lower in (c["country"] or "").lower()
+        ]
+    
+    # Get total count after filtering
+    total = len(unsubscribed_companies)
+    
+    # Calculate pagination
+    skip = (page - 1) * page_size
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+    
+    # Get paginated results
+    paginated_items = unsubscribed_companies[skip:skip + page_size]
+    
+    return {
+        "items": paginated_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
+
+
+async def remove_from_unsubscribe_list(
+    unsubscribe_id: int,
+    db: Session = Depends(get_db)
+):
+    """Remove a company from the unsubscribe list (re-subscribe)."""
+    entry = db.query(UnsubscribeList).filter(UnsubscribeList.id == unsubscribe_id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Unsubscribe entry not found")
+    
+    db.delete(entry)
+    db.commit()
+    
+    return {"message": "Successfully removed from unsubscribe list", "email": entry.email}

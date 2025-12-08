@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Automation from './pages/Automation';
 import Companies from './pages/Companies';
 import EmailOpenedCompanies from './pages/EmailOpenedCompanies';
+import UnsubscribedCompanies from './pages/UnsubscribedCompanies';
 import Campaigns from './pages/Campaigns';
 import Messages from './pages/Messages';
 import Leads from './pages/Leads';
@@ -32,6 +33,7 @@ function App() {
               <Route path="/automation" element={<Automation />} />
               <Route path="/companies" element={<Companies />} />
               <Route path="/opened" element={<EmailOpenedCompanies />} />
+              <Route path="/unsubscribed" element={<UnsubscribedCompanies />} />
               <Route path="/campaigns" element={<Campaigns />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/leads" element={<Leads />} />
