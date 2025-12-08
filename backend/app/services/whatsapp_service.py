@@ -105,6 +105,12 @@ class WhatsAppService:
                 "Content-Type": "application/json"
             }
             
+            # Log the full request for debugging
+            print(f"🔵 Gupshup API Request:")
+            print(f"   URL: {self.base_url}")
+            print(f"   Headers: Authorization={self.app_token[:20]}..., Content-Type=application/json")
+            print(f"   Payload: {json.dumps(payload, indent=2)}")
+            
             # Send request to v3 endpoint
             response = requests.post(
                 self.base_url,
@@ -114,23 +120,35 @@ class WhatsAppService:
             
             result = response.json()
             
+            # Log the response
+            print(f"🟢 Gupshup API Response:")
+            print(f"   Status Code: {response.status_code}")
+            print(f"   Body: {json.dumps(result, indent=2)}")
+            
             if response.status_code == 200 or response.status_code == 202:
+                msg_id = result.get('messages', [{}])[0].get('id')
+                print(f"✅ WhatsApp sent successfully! Message ID: {msg_id}")
                 return {
                     "status": "sent",
-                    "message_id": result.get('messages', [{}])[0].get('id'),
+                    "message_id": msg_id,
                     "provider": "gupshup_v3",
-                    "to": to_number
+                    "to": to_number,
+                    "raw_response": result
                 }
             else:
+                error_msg = result.get('error', {}).get('message', 'Unknown error')
+                print(f"❌ WhatsApp send failed: {error_msg}")
                 return {
                     "status": "failed",
-                    "error": result.get('error', {}).get('message', 'Unknown error'),
+                    "error": error_msg,
                     "details": result,
                     "provider": "gupshup_v3"
                 }
                 
         except Exception as e:
-            print(f"Error sending WhatsApp via Gupshup v3: {str(e)}")
+            print(f"❌ Exception sending WhatsApp via Gupshup v3: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {
                 "status": "failed",
                 "error": str(e),

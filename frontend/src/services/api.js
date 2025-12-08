@@ -29,6 +29,7 @@ export const startCampaignNow = (id) => api.post(`/campaigns/${id}/start-now`);
 // Messages
 export const getMessages = (params) => api.get('/messages', { params });
 export const sendMessage = (id) => api.post(`/messages/${id}/send`);
+export const sendWhatsAppMessage = (id) => api.post(`/messages/${id}/send-whatsapp`);
 export const deleteMessages = (ids) => api.delete('/messages/batch', { data: { ids } });
 export const retryMessages = (ids) => api.post('/messages/batch/retry', { ids });
 export const exportMessages = () => api.get('/messages/export', { responseType: 'blob' });

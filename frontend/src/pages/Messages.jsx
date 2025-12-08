@@ -21,6 +21,7 @@ import Modal from '../components/Modal';
 import {
   getMessages,
   sendMessage,
+  sendWhatsAppMessage,
   deleteMessages,
   retryMessages,
   exportMessages,
@@ -81,10 +82,14 @@ export default function Messages() {
     loadMessages();
   }, [loadMessages]);
 
-  const handleSend = async (messageId) => {
+  const handleSend = async (messageId, messageType = 'EMAIL') => {
     try {
       setSendingId(messageId);
-      await sendMessage(messageId);
+      if (messageType === 'WHATSAPP') {
+        await sendWhatsAppMessage(messageId);
+      } else {
+        await sendMessage(messageId);
+      }
       loadMessages(pagination.page);
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -244,11 +249,16 @@ export default function Messages() {
           >
             <Eye className="w-4 h-4" />
           </button>
-          {row.status === 'DRAFT' && row.type === 'EMAIL' && (
+          {row.status === 'DRAFT' && (
             <button
-              onClick={() => handleSend(row.id)}
+              onClick={() => handleSend(row.id, row.type)}
               disabled={sendingId === row.id}
-              className="p-1.5 rounded-lg hover:bg-emerald-100 text-emerald-600"
+              className={`p-1.5 rounded-lg ${
+                row.type === 'WHATSAPP' 
+                  ? 'hover:bg-green-100 text-green-600' 
+                  : 'hover:bg-emerald-100 text-emerald-600'
+              }`}
+              title={`Send ${row.type === 'WHATSAPP' ? 'WhatsApp' : 'Email'}`}
             >
               <Send className="w-4 h-4" />
             </button>
@@ -535,17 +545,20 @@ export default function Messages() {
               </div>
             </div>
 
-            {viewMessage.status === 'DRAFT' && viewMessage.type === 'EMAIL' && (
+            {viewMessage.status === 'DRAFT' && (
               <div className="flex justify-end pt-2">
                 <Button
                   icon={Send}
                   onClick={() => {
-                    handleSend(viewMessage.id);
+                    handleSend(viewMessage.id, viewMessage.type);
                     setViewMessage(null);
                   }}
-                  className="bg-gradient-to-r from-emerald-500 to-teal-500"
+                  className={viewMessage.type === 'WHATSAPP' 
+                    ? "bg-gradient-to-r from-green-500 to-emerald-500" 
+                    : "bg-gradient-to-r from-emerald-500 to-teal-500"
+                  }
                 >
-                  Send Now
+                  Send {viewMessage.type === 'WHATSAPP' ? 'WhatsApp' : 'Email'} Now
                 </Button>
               </div>
             )}

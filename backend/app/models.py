@@ -225,3 +225,16 @@ class SystemConfig(Base):
     value = Column(Text, nullable=False)
     description = Column(String, nullable=True)
     updated_at = Column(DateTime, default=now_ist, onupdate=now_ist)
+
+
+class WhatsAppMessageEvent(Base):
+    """Track WhatsApp message delivery events from Gupshup webhooks."""
+    __tablename__ = "whatsapp_message_events"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    gupshup_message_id = Column(String, nullable=True, index=True)  # Message ID from Gupshup
+    phone_number = Column(String, nullable=True, index=True)
+    event_type = Column(String, nullable=False)  # sent, delivered, read, failed, etc.
+    event_payload = Column(Text, nullable=True)  # Full JSON payload for debugging
+    error_message = Column(String, nullable=True)
+    created_at = Column(DateTime, default=now_ist)

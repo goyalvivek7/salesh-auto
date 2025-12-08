@@ -8,8 +8,9 @@ from sqlalchemy import func
 from datetime import datetime, timedelta
 
 from app.database import get_db
-from app.models import AutomationConfig, UnsubscribeList, EmailOpenTracking, Company, Campaign, Message
+from app.models import AutomationConfig, UnsubscribeList, EmailOpenTracking, Company, Campaign, Message, WhatsAppMessageEvent
 from app.enums import MessageStatus, MessageType
+import json
 from app.services.automation_service import unsubscribe_service, reply_tracking_service
 from app.utils.timezone import now_ist
 
@@ -381,11 +382,43 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         payload = await request.json()
         
         print(f"📱 WhatsApp webhook received: {payload}")
+
+        # Handle Gupshup "message-event" format (delivery/read/failure callbacks)
+        # Docs: https://partner-docs.gupshup.io/docs/message-events
+        if payload.get("type") == "message-event":
+            event_payload = payload.get("payload", {}) or {}
+            event_type = event_payload.get("type") or event_payload.get("event") or "unknown"
+            message_id = event_payload.get("id") or event_payload.get("whatsappMessageId")
+            phone = event_payload.get("phone") or event_payload.get("phoneNumber") or event_payload.get("destination")
+            error_msg = event_payload.get("errorMessage") or event_payload.get("reason")
+            
+            print(f"📊 WhatsApp message-event: type={event_type}, id={message_id}, phone={phone}")
+            print(f"   Full payload: {json.dumps(event_payload, indent=2)}")
+            
+            # Save to database
+            wa_event = WhatsAppMessageEvent(
+                gupshup_message_id=message_id,
+                phone_number=phone,
+                event_type=event_type,
+                event_payload=json.dumps(payload),
+                error_message=error_msg,
+                created_at=now_ist()
+            )
+            db.add(wa_event)
+            db.commit()
+            
+            return {
+                "status": "event_logged",
+                "event_type": event_type,
+                "message_id": message_id,
+                "phone": phone,
+                "saved_to_db": True
+            }
         
-        # Gupshup/Meta webhook format has entry -> changes -> value -> messages
+        # Gupshup/Meta webhook format has entry -> changes -> value -> messages/statuses
         # Format: {"entry": [{"changes": [{"value": {"messages": [...]}}]}]}
         
-        # Extract messages from the nested structure
+        # Extract messages/statuses from the nested structure
         entries = payload.get("entry", [])
         if not entries:
             return {"status": "ignored", "reason": "No entries in payload"}
@@ -395,8 +428,47 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         if not changes:
             return {"status": "ignored", "reason": "No changes in entry"}
         
-        # Get messages from value
         value = changes[0].get("value", {})
+
+        # First, handle status updates (delivery/read/etc.) if present
+        statuses = value.get("statuses", [])
+        if statuses:
+            status_data = statuses[0]
+            event_type = status_data.get("status", "unknown")
+            message_id = status_data.get("id")
+            recipient_id = status_data.get("recipient_id")
+            error_msg = None
+            
+            # Check for errors
+            errors = status_data.get("errors", [])
+            if errors:
+                error_msg = errors[0].get("message") or errors[0].get("title")
+            
+            print(f"📊 WhatsApp status update: status={event_type}, id={message_id}, recipient={recipient_id}")
+            print(f"   Full status: {json.dumps(status_data, indent=2)}")
+            
+            # Save to database
+            wa_event = WhatsAppMessageEvent(
+                gupshup_message_id=message_id,
+                phone_number=recipient_id,
+                event_type=event_type,
+                event_payload=json.dumps(payload),
+                error_message=error_msg,
+                created_at=now_ist()
+            )
+            db.add(wa_event)
+            db.commit()
+            
+            return {
+                "status": "status_logged",
+                "whatsapp_status": event_type,
+                "message_id": message_id,
+                "recipient_id": recipient_id,
+                "error": error_msg,
+                "saved_to_db": True
+            }
+
+        # Otherwise, fall back to handling incoming messages (replies)
         messages = value.get("messages", [])
         
         if not messages:
@@ -998,3 +1070,41 @@ async def remove_from_unsubscribe_list(
     db.commit()
     
     return {"message": "Successfully removed from unsubscribe list", "email": entry.email}
+
+
+async def get_whatsapp_events(
+    page: int = 1,
+    page_size: int = 50,
+    phone: str = None,
+    message_id: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get WhatsApp message events from Gupshup webhooks."""
+    query = db.query(WhatsAppMessageEvent).order_by(WhatsAppMessageEvent.created_at.desc())
+    
+    if phone:
+        query = query.filter(WhatsAppMessageEvent.phone_number.contains(phone))
+    if message_id:
+        query = query.filter(WhatsAppMessageEvent.gupshup_message_id == message_id)
+    
+    total = query.count()
+    events = query.offset((page - 1) * page_size).limit(page_size).all()
+    
+    return {
+        "items": [
+            {
+                "id": e.id,
+                "gupshup_message_id": e.gupshup_message_id,
+                "phone_number": e.phone_number,
+                "event_type": e.event_type,
+                "error_message": e.error_message,
+                "created_at": e.created_at,
+                "payload": json.loads(e.event_payload) if e.event_payload else None
+            }
+            for e in events
+        ],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if total > 0 else 1
+    }

@@ -298,6 +298,54 @@ async def get_companies_by_industry(
     return [CompanyResponse.model_validate(company) for company in companies]
 
 
+# NOTE: These specific routes MUST be defined BEFORE /api/companies/{company_id}
+# to avoid the path parameter catching 'opened', 'unsubscribed', 'stopped' as company_id
+@app.get("/api/companies/opened")
+async def get_companies_opened(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get companies that have opened emails."""
+    from app.automation_endpoints import get_email_opened_companies
+    return await get_email_opened_companies(page, page_size, search, db)
+
+
+@app.get("/api/companies/unsubscribed")
+async def get_companies_unsubscribed(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get companies that have unsubscribed."""
+    from app.automation_endpoints import get_unsubscribed_companies
+    return await get_unsubscribed_companies(page, page_size, search, db)
+
+
+@app.delete("/api/companies/unsubscribed/{unsubscribe_id}")
+async def delete_unsubscribe_entry(
+    unsubscribe_id: int,
+    db: Session = Depends(get_db)
+):
+    """Remove a company from the unsubscribe list."""
+    from app.automation_endpoints import remove_from_unsubscribe_list
+    return await remove_from_unsubscribe_list(unsubscribe_id, db)
+
+
+@app.get("/api/companies/stopped")
+async def get_companies_stopped(
+    page: int = 1,
+    page_size: int = 20,
+    search: str = None,
+    db: Session = Depends(get_db)
+):
+    """Get companies that have stopped receiving messages."""
+    from app.automation_endpoints import get_stopped_companies
+    return await get_stopped_companies(page, page_size, search, db)
+
+
 @app.get("/api/companies/{company_id}", response_model=CompanyResponse)
 async def get_company(
     company_id: int,
@@ -1130,84 +1178,66 @@ async def send_whatsapp_message(
     if not company or not company.phone:
         raise HTTPException(status_code=400, detail="Company phone number not available")
     
-    try:
-        # Get template ID based on stage
-        template_id = whatsapp_service.get_template_id(message.stage.value)
+    # Get template ID based on stage
+    template_id = whatsapp_service.get_template_id(message.stage.value)
+    
+    # Build template parameters
+    params = whatsapp_service.build_template_params(
+        company_name=company.name,
+        industry=company.industry or "Business",
+        country=company.country or "your region",
+        stage=message.stage.value
+    )
+    
+    # Clean phone number (remove spaces, dashes, +)
+    phone = company.phone.replace('+', '').replace('-', '').replace(' ', '')
+    
+    # Log what we're about to send
+    print(f"📤 Sending WhatsApp to {phone}")
+    print(f"   Template: {template_id}")
+    print(f"   Params: {params}")
+    print(f"   App ID: {whatsapp_service.app_id}")
+    print(f"   Token: {whatsapp_service.app_token[:20]}..." if whatsapp_service.app_token else "   Token: NOT SET")
+    
+    # Send WhatsApp message
+    result = whatsapp_service.send_template_message(
+        to_number=phone,
+        template_id=template_id,
+        params=params
+    )
+    
+    print(f"📥 Gupshup response: {result}")
+    
+    if result['status'] == 'sent':
+        # Update message status
+        message.status = MessageStatus.SENT
+        message.sent_at = now_ist()
+        db.commit()
         
-        # Build template parameters
-        params = whatsapp_service.build_template_params(
-            company_name=company.name,
-            industry=company.industry,
-            country=company.country,
-            stage=message.stage.value
-        )
-        
-        # Clean phone number (remove spaces, dashes, +)
-        phone = company.phone.replace('+', '').replace('-', '').replace(' ', '')
-        
-        # Send WhatsApp message
-        result = whatsapp_service.send_template_message(
-            to_number=phone,
-            template_id=template_id,
-            params=params
-        )
-        
-        if result['status'] == 'sent':
-            # Update message status
-            message.status = MessageStatus.SENT
-            message.sent_at = now_ist()
-            db.commit()
-            
-            return {
-                "message": "WhatsApp message sent successfully",
-                "status": "sent",
-                "to": phone,
-                "template_id": template_id,
-                "message_id": result.get('message_id')
-            }
-        else:
-            raise HTTPException(status_code=500, detail=f"Failed to send WhatsApp: {result.get('error')}")
-            
-    except Exception as e:
-        # Update status to FAILED
-        # Format content as HTML with unsubscribe link and tracking pixel
-        html_content = email_service.format_html_email(
-            message.content,
-            message.subject,
-            unsubscribe_token=message.unsubscribe_token,
-            message_id=message.id
-        )
-        
-        # Send email asynchronously
-        result = await email_service.send_email_async(
-            to_email=company.email,
-            subject=message.subject or "Business Inquiry",
-            content=html_content,
-            html=True
-        )
-        
-        if result['status'] == 'sent':
-            # Update message status
-            message.status = MessageStatus.SENT
-            message.sent_at = now_ist()
-            db.commit()
-            
-            return {
-                "message": "Email sent successfully",
-                "status": "sent",
-                "to": company.email,
-                "message_id": result.get('message_id')
-            }
-        else:
-            raise HTTPException(status_code=500, detail=f"Failed to send email: {result.get('error')}")
-            
-    except Exception as e:
-        # Update status to FAILED
+        return {
+            "message": "WhatsApp message sent successfully",
+            "status": "sent",
+            "to": phone,
+            "template_id": template_id,
+            "message_id": result.get('message_id'),
+            "gupshup_response": result
+        }
+    elif result['status'] == 'skipped':
+        # Skipped (e.g. dummy number)
+        return {
+            "message": "WhatsApp message skipped",
+            "status": "skipped",
+            "reason": result.get('error'),
+            "to": phone
+        }
+    else:
+        # WhatsApp failed - mark as failed
         message.status = MessageStatus.FAILED
         db.commit()
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error sending email: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to send WhatsApp: {result.get('error')}. Details: {result.get('details', {})}"
+        )
 
 
 @app.post("/api/campaigns/{campaign_id}/send-batch")
@@ -1413,17 +1443,16 @@ try:
 except Exception as e:
     print(f"⚠️  Could not register automation endpoints: {str(e)}")
 # --- Reply Dashboard Endpoints ---
+# NOTE: /api/companies/opened, /api/companies/unsubscribed, /api/companies/stopped are 
+# now defined above as decorated routes (before /api/companies/{company_id})
 try:
-    from app.automation_endpoints import get_all_replies, get_qualified_leads, get_stopped_companies, get_chart_data, get_email_opened_companies, get_detailed_analytics, get_unsubscribed_companies, remove_from_unsubscribe_list
+    from app.automation_endpoints import get_all_replies, get_qualified_leads, get_chart_data, get_detailed_analytics, get_whatsapp_events
     
     app.add_api_route("/api/replies", get_all_replies, methods=["GET"])
     app.add_api_route("/api/leads/qualified", get_qualified_leads, methods=["GET"])
-    app.add_api_route("/api/companies/stopped", get_stopped_companies, methods=["GET"])
     app.add_api_route("/api/analytics/charts", get_chart_data, methods=["GET"])
-    app.add_api_route("/api/companies/opened", get_email_opened_companies, methods=["GET"])
-    app.add_api_route("/api/companies/unsubscribed", get_unsubscribed_companies, methods=["GET"])
-    app.add_api_route("/api/companies/unsubscribed/{unsubscribe_id}", remove_from_unsubscribe_list, methods=["DELETE"])
     app.add_api_route("/api/analytics/detailed", get_detailed_analytics, methods=["GET"])
+    app.add_api_route("/api/whatsapp/events", get_whatsapp_events, methods=["GET"])
     print("✅ Reply dashboard endpoints registered successfully")
 except Exception as e:
     print(f"⚠️  Could not register reply dashboard endpoints: {str(e)}")
