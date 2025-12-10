@@ -24,7 +24,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import {
-  getCampaigns,
+  getServiceCampaigns,
   getCampaign,
   getCompany,
   generateCampaign,
@@ -81,8 +81,9 @@ export default function Campaigns() {
   const loadCampaigns = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await getCampaigns();
-      setCampaigns(res.data || []);
+      // Use service-specific endpoint with /services/ prefix
+      const res = await getServiceCampaigns({ page: 1, page_size: 100 });
+      setCampaigns(res.data?.items || res.data || []);
     } catch (error) {
       console.error('Failed to load campaigns:', error);
     } finally {

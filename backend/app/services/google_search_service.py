@@ -9,6 +9,7 @@ Includes enhanced search queries and multiple fallback strategies.
 import re
 import requests
 from typing import List, Dict, Optional
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -140,15 +141,20 @@ class GoogleSearchService:
             
             if 'items' in result:
                 for item in result['items']:
-                    # Extract from snippet and title
                     text = item.get('snippet', '') + ' ' + item.get('title', '')
                     
                     if contact_type == "email":
                         found = self.email_pattern.findall(text)
                         for email in found:
-                            if not any(skip in email.lower() for skip in ['example.com', 'domain.com', 'email.com', 'google.com', 'youtube.com']):
-                                contacts.add(email.lower())
-                                print(f"   Found email in search results: {email}")
+                            lower_email = email.lower()
+                            if any(skip in lower_email for skip in [
+                                'example.com', 'domain.com', 'email.com', 'google.com', 'youtube.com',
+                                'linkedin.com', 'facebook.com', 'twitter.com', 'instagram.com',
+                                'indiamart.com', 'exportersindia.com', 'data-axle.com', 'namefatso.com'
+                            ]):
+                                continue
+                            contacts.add(lower_email)
+                            print(f"   Found email in search results: {email}")
                     else:
                         for pattern in self.phone_patterns:
                             found = pattern.findall(text)
@@ -177,30 +183,52 @@ class GoogleSearchService:
             Website URL or None if not found
         """
         try:
-            # Build the search query
             query = f'"{company_name}" {industry} {country} official website'
             
-            # Build the Custom Search API service
             service = build("customsearch", "v1", developerKey=self.api_key)
             
-            # Execute the search
             result = service.cse().list(
                 q=query,
                 cx=self.search_engine_id,
-                num=3  # Get top 3 results
+                num=5
             ).execute()
-            
-            # Extract website from first result
+
             if 'items' in result and len(result['items']) > 0:
-                # Try to find the most relevant result (avoid support/help pages)
+                # Build a simple token set from company name to match against domains
+                name_tokens = [
+                    t for t in re.split(r'[^a-z0-9]+', company_name.lower())
+                    if t and t not in {
+                        'the', 'india', 'inc', 'ltd', 'pvt', 'private', 'solutions',
+                        'technologies', 'technology', 'labs', 'corp', 'corporation',
+                        'group', 'systems', 'services', 'co', 'company'
+                    }
+                ]
+
+                bad_domains = [
+                    'linkedin.com', 'facebook.com', 'twitter.com', 'instagram.com',
+                    'indiamart.com', 'exportersindia.com', 'data-axle.com', 'namefatso.com'
+                ]
+
+                candidates: List[str] = []
                 for item in result['items']:
                     url = item.get('link', '')
-                    # Skip support/help pages, prefer main domain
-                    if not any(term in url.lower() for term in ['support.', 'help.', '/support/', '/help/']):
-                        return url
-                # Fall back to first result
-                return result['items'][0].get('link')
-            
+                    lower_url = url.lower()
+                    parsed = urlparse(lower_url)
+                    host = parsed.netloc
+
+                    if any(bad in host for bad in bad_domains):
+                        continue
+                    if any(term in lower_url for term in ['support.', 'help.', '/support/', '/help/']):
+                        continue
+
+                    if name_tokens and not any(token in host for token in name_tokens):
+                        continue
+
+                    candidates.append(url)
+
+                if candidates:
+                    return candidates[0]
+
             return None
             
         except HttpError as e:

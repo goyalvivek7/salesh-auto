@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
-import { getQualifiedLeads, getAllReplies, exportLeads } from '../services/api';
+import { getServiceLeads, getAllReplies, exportLeads } from '../services/api';
 
 export default function Leads() {
   const [leads, setLeads] = useState([]);
@@ -36,10 +36,10 @@ export default function Leads() {
     try {
       setLoading(true);
       const [leadsRes, repliesRes] = await Promise.all([
-        getQualifiedLeads(),
+        getServiceLeads({ page: 1, page_size: 100 }),
         getAllReplies(),
       ]);
-      setLeads(leadsRes.data.leads || []);
+      setLeads(leadsRes.data?.items || leadsRes.data?.leads || []);
       setReplies(repliesRes.data.replies || []);
     } catch (error) {
       console.error('Failed to load leads:', error);

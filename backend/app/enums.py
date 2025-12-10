@@ -26,3 +26,11 @@ class InteractionType(str, enum.Enum):
     REPLY = "REPLY"
     CLICK = "CLICK"
     OPEN = "OPEN"
+
+
+class IntentType(str, enum.Enum):
+    """Intent classification for reply analysis."""
+    HOT = "HOT"          # Direct interest, asked for demo/price/meeting
+    WARM = "WARM"        # Some interest, needs follow-up
+    COLD = "COLD"        # No interest but polite
+    UNSUBSCRIBE = "UNSUBSCRIBE"  # Requested to stop messages

@@ -1,463 +1,318 @@
-import { useState, useEffect } from "react";
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Settings as SettingsIcon,
   Mail,
-  Bell,
   Building2,
-  Save,
-  Loader2,
-  CheckCircle2,
-  AlertTriangle,
-} from "lucide-react";
-import Button from "../components/Button";
+  User,
+  Globe,
+  Phone,
+  AlertCircle,
+} from 'lucide-react';
 import {
   getSettings,
   updateGeneralSettings,
-  updateEmailSettings,
-  // updateNotificationSettings,
-} from "../services/api";
+  getEmailAccounts,
+  createEmailAccount,
+  updateEmailAccount,
+} from '../services/api';
 
 export default function Settings() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("general");
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState('general');
+  const [activeEmailIndex, setActiveEmailIndex] = useState(0);
 
-  const [general, setGeneral] = useState({
-    company_name: "",
-    company_website: "",
-    company_description: "",
-    sender_name: "",
-    sender_position: "",
-    timezone: "Asia/Kolkata",
-    language: "en",
+  const { data: settingsData, isLoading: settingsLoading } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => getSettings().then((res) => res.data),
   });
 
-  const [email, setEmail] = useState({
-    smtp_server: "",
-    smtp_port: 587,
-    smtp_username: "",
-    smtp_password: "",
-    from_email: "",
-    from_name: "",
+  const { data: emailAccountsData, isLoading: emailLoading } = useQuery({
+    queryKey: ['email-accounts'],
+    queryFn: () => getEmailAccounts().then((res) => res.data.items || res.data || []),
   });
 
-  // const [notifications, setNotifications] = useState({
-  //   email_notifications: true,
-  //   reply_notifications: true,
-  //   daily_reports: false,
-  //   weekly_reports: true,
-  // });
+  const generalMutation = useMutation({
+    mutationFn: (payload) => updateGeneralSettings(payload),
+    onSuccess: () => queryClient.invalidateQueries(['settings']),
+  });
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  const emailMutation = useMutation({
+    mutationFn: ({ id, payload, isNew }) =>
+      isNew ? createEmailAccount(payload) : updateEmailAccount(id, payload),
+    onSuccess: () => queryClient.invalidateQueries(['email-accounts']),
+  });
 
-  const loadSettings = async () => {
-    try {
-      setLoading(true);
-      const res = await getSettings();
-      if (res.data.general) setGeneral(res.data.general);
-      if (res.data.email) setEmail(res.data.email);
-      // if (res.data.notifications) setNotifications(res.data.notifications);
-    } catch (error) {
-      console.error("Failed to load settings:", error);
-    } finally {
-      setLoading(false);
-    }
+  const settings = settingsData || {};
+  const emailAccounts = emailAccountsData || [];
+  const activeEmail = emailAccounts[activeEmailIndex] || null;
+
+  const handleSaveGeneral = (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    generalMutation.mutate(payload);
   };
 
-  const handleSave = async () => {
-    try {
-      setSaving(true);
-      if (activeTab === "general") {
-        await updateGeneralSettings(general);
-      } else if (activeTab === "email") {
-        await updateEmailSettings(email);
-      }
-      // else if (activeTab === 'notifications') {
-      //   await updateNotificationSettings(notifications);
-      // }
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (error) {
-      console.error("Failed to save settings:", error);
-      alert("Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
+  const handleSaveEmail = (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const formData = new FormData(form);
+    const payload = Object.fromEntries(formData.entries());
+    const isNew = !activeEmail || !activeEmail.id;
+    const id = activeEmail?.id;
+    emailMutation.mutate({ id, payload, isNew });
   };
 
-  const tabs = [
-    { id: "general", label: "General", icon: Building2 },
-    { id: "email", label: "Email", icon: Mail },
-    // { id: 'notifications', label: 'Notifications', icon: Bell },
-  ];
-
-  if (loading) {
+  if (settingsLoading && emailLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600" />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500 mt-1">
-          Manage your account and application settings
-        </p>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar */}
-        <div className="lg:w-64 flex-shrink-0">
-          <div className="bg-white rounded-2xl border border-gray-100 p-2">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? "bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-700"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                <tab.icon
-                  className={`w-5 h-5 ${
-                    activeTab === tab.id ? "text-indigo-600" : "text-gray-400"
-                  }`}
-                />
-                {tab.label}
-              </button>
-            ))}
+      {/* Page header */}
+      <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-t-3xl shadow-sm shadow-indigo-50 px-6 py-5 lg:px-8 lg:py-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 via-sky-500 to-cyan-400 flex items-center justify-center text-white">
+            <SettingsIcon className="w-5 h-5" />
+          </div>
+          <div>
+            <h1 className="text-xl lg:text-2xl font-semibold text-slate-900">Settings</h1>
+            <p className="text-sm text-slate-500">Manage your account and application settings</p>
           </div>
         </div>
+      </div>
 
-        {/* Content */}
-        <div className="flex-1">
-          <div className="bg-white rounded-2xl border border-gray-100 p-6">
-            {/* Success Message */}
-            {saveSuccess && (
-              <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                <p className="text-sm text-emerald-700">
-                  Settings saved successfully!
-                </p>
+      {/* Grey content background with inner card */}
+      <div >
+        {/* Top tabs: General / Email */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/70 p-2 inline-flex gap-1 mb-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab('general')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all ${
+              activeTab === 'general'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            General
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('email')}
+            className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-all ${
+              activeTab === 'email'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Mail className="w-4 h-4" />
+            Email
+          </button>
+        </div>
+
+        {/* Inner white area for forms */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          {activeTab === 'general' ? (
+            <>
+              <div className="bg-indigo-50 border border-indigo-100 text-xs rounded-xl px-4 py-3 text-slate-700">
+                <span className="font-semibold text-indigo-700">Required for campaigns: </span>
+                Company Name, Your Name, and Company Description must be filled before creating campaigns or sending messages.
               </div>
-            )}
 
-            {/* General Settings */}
-            {activeTab === "general" && (
-              <div className="space-y-6">
-                {/* Required Settings Alert */}
-                <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
-                  <p className="text-sm text-indigo-700">
-                    <strong>Required for campaigns:</strong> Company Name, Your Name, and Company Description must be filled before creating campaigns or sending messages.
-                  </p>
-                </div>
-
+              {/* Company Information */}
+              <form onSubmit={handleSaveGeneral} className="space-y-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Company Information
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={general.company_name}
-                        onChange={(e) =>
-                          setGeneral({
-                            ...general,
-                            company_name: e.target.value,
-                          })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="TrueValueInfosoft Pvt Ltd"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company Description <span className="text-red-500">*</span>
-                      </label>
-                      <textarea
-                        value={general.company_description}
-                        onChange={(e) =>
-                          setGeneral({
-                            ...general,
-                            company_description: e.target.value,
-                          })
-                        }
-                        rows={2}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="custom software solutions, web development, and mobile apps"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Brief description of your services (used in outreach messages)</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company Website
-                      </label>
-                      <input
-                        type="url"
-                        value={general.company_website}
-                        onChange={(e) =>
-                          setGeneral({
-                            ...general,
-                            company_website: e.target.value,
-                          })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="https://yourcompany.com"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Sender Information
-                  </h3>
+                  <h2 className="text-sm font-semibold text-slate-900 mb-3">Company Information</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Your Name <span className="text-red-500">*</span>
-                      </label>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Company Name *</label>
                       <input
-                        type="text"
-                        value={general.sender_name}
-                        onChange={(e) =>
-                          setGeneral({
-                            ...general,
-                            sender_name: e.target.value,
-                          })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Milan"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Your name used in email/WhatsApp signatures</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Your Position
-                      </label>
-                      <input
-                        type="text"
-                        value={general.sender_position}
-                        onChange={(e) =>
-                          setGeneral({
-                            ...general,
-                            sender_position: e.target.value,
-                          })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Business Development Manager"
+                        name="company_name"
+                        defaultValue={settings.company_name || ''}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                       />
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Application Settings
-                  </h3>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Timezone
-                    </label>
-                    <select
-                      value={general.timezone}
-                      onChange={(e) =>
-                        setGeneral({ ...general, timezone: e.target.value })
-                      }
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    >
-                      <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                      <option value="America/New_York">
-                        America/New_York (EST)
-                      </option>
-                      <option value="America/Los_Angeles">
-                        America/Los_Angeles (PST)
-                      </option>
-                      <option value="Europe/London">
-                        Europe/London (GMT)
-                      </option>
-                      <option value="UTC">UTC</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Email Settings */}
-            {activeTab === "email" && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    Email Settings
-                  </h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Configure your SMTP server for sending emails
-                  </p>
-                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl mb-6">
-                    <div className="flex gap-3">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                      <p className="text-sm text-amber-700">
-                        Email settings are typically configured via environment
-                        variables. Changes here may not persist after server
-                        restart.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        SMTP Server
-                      </label>
-                      <input
-                        type="text"
-                        value={email.smtp_server}
-                        onChange={(e) =>
-                          setEmail({ ...email, smtp_server: e.target.value })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="smtp.gmail.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        SMTP Port
-                      </label>
-                      <input
-                        type="number"
-                        value={email.smtp_port}
-                        onChange={(e) =>
-                          setEmail({
-                            ...email,
-                            smtp_port: parseInt(e.target.value),
-                          })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="587"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Username
-                      </label>
-                      <input
-                        type="text"
-                        value={email.smtp_username}
-                        onChange={(e) =>
-                          setEmail({ ...email, smtp_username: e.target.value })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="your@email.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Password
-                      </label>
-                      <input
-                        type="password"
-                        value={email.smtp_password}
-                        onChange={(e) =>
-                          setEmail({ ...email, smtp_password: e.target.value })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="••••••••"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        From Email
-                      </label>
-                      <input
-                        type="email"
-                        value={email.from_email}
-                        onChange={(e) =>
-                          setEmail({ ...email, from_email: e.target.value })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="outreach@yourcompany.com"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        From Name
-                      </label>
-                      <input
-                        type="text"
-                        value={email.from_name}
-                        onChange={(e) =>
-                          setEmail({ ...email, from_name: e.target.value })
-                        }
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        placeholder="Your Name"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Notification Settings */}
-            {/* {activeTab === 'notifications' && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Notification Preferences</h3>
-                  <div className="space-y-4">
-                    {[
-                      { key: 'email_notifications', label: 'Email Notifications', desc: 'Receive notifications via email' },
-                      { key: 'reply_notifications', label: 'Reply Notifications', desc: 'Get notified when someone replies' },
-                      { key: 'daily_reports', label: 'Daily Reports', desc: 'Receive daily summary emails' },
-                      { key: 'weekly_reports', label: 'Weekly Reports', desc: 'Receive weekly performance reports' },
-                    ].map((item) => (
-                      <div
-                        key={item.key}
-                        className="flex items-center justify-between p-4 bg-gray-50 rounded-xl"
-                      >
-                        <div>
-                          <p className="font-medium text-gray-900">{item.label}</p>
-                          <p className="text-sm text-gray-500">{item.desc}</p>
-                        </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={notifications[item.key]}
-                            onChange={(e) =>
-                              setNotifications({ ...notifications, [item.key]: e.target.checked })
-                            }
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-100 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </label>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Company Website</label>
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-slate-400" />
+                        <input
+                          name="company_website"
+                          defaultValue={settings.company_website || ''}
+                          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        />
                       </div>
-                    ))}
+                    </div>
+                    <div className="md:col-span-2 space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Company Description *</label>
+                      <textarea
+                        name="company_description"
+                        defaultValue={settings.company_description || ''}
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )} */}
 
-            {/* Save Button */}
-            <div className="mt-6 pt-6 border-t border-gray-100 flex justify-end">
-              <Button
-                onClick={handleSave}
-                loading={saving}
-                icon={Save}
-                className="bg-gradient-to-r from-indigo-600 to-violet-600"
-              >
-                Save Changes
-              </Button>
-            </div>
-          </div>
+                {/* Sender Information */}
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900 mb-3">Sender Information</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Your Name *</label>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-slate-400" />
+                        <input
+                          name="sender_name"
+                          defaultValue={settings.sender_name || ''}
+                          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Your Position</label>
+                      <input
+                        name="sender_position"
+                        defaultValue={settings.sender_position || ''}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">Contact Phone</label>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-slate-400" />
+                        <input
+                          name="sender_phone"
+                          defaultValue={settings.sender_phone || ''}
+                          className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                  >
+                    Save General Settings
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <>
+              {/* Email accounts selector */}
+              {emailAccounts.length === 0 && (
+                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 mb-4">
+                  <AlertCircle className="w-4 h-4" />
+                  <span>No email accounts configured. Add one below.</span>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 mb-4">
+                {emailAccounts.map((acc, index) => (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => setActiveEmailIndex(index)}
+                    className={`px-4 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                      activeEmailIndex === index
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    Email {index + 1}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setActiveEmailIndex(emailAccounts.length)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-medium border-dashed border ${
+                    activeEmailIndex === emailAccounts.length
+                      ? 'border-indigo-500 text-indigo-600 bg-indigo-50'
+                      : 'border-slate-300 text-slate-500 hover:bg-slate-50'
+                  }`}
+                >
+                  + Add Email
+                </button>
+              </div>
+
+              {/* SMTP Form */}
+              <form onSubmit={handleSaveEmail} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">SMTP Server</label>
+                  <input
+                    name="smtp_host"
+                    defaultValue={activeEmail?.smtp_host || ''}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">SMTP Port</label>
+                  <input
+                    name="smtp_port"
+                    type="number"
+                    defaultValue={activeEmail?.smtp_port || 465}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">Username</label>
+                  <input
+                    name="smtp_username"
+                    defaultValue={activeEmail?.smtp_username || ''}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">Password</label>
+                  <input
+                    name="smtp_password"
+                    type="password"
+                    defaultValue={activeEmail?.smtp_password || ''}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">From Email</label>
+                  <input
+                    name="email"
+                    type="email"
+                    defaultValue={activeEmail?.email || ''}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-600">From Name</label>
+                  <input
+                    name="display_name"
+                    defaultValue={activeEmail?.display_name || ''}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+
+                <div className="md:col-span-2 flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+                  >
+                    Save Email Settings
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>

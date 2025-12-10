@@ -81,4 +81,53 @@ export const checkRequiredSettings = () => api.get('/settings/check-required');
 export const resetDatabase = () => api.delete('/reset-database');
 export const healthCheck = () => api.get('/health');
 
+// Products
+export const getProducts = (params) => api.get('/products', { params });
+export const getProduct = (id) => api.get(`/products/${id}`);
+export const createProduct = (data) => api.post('/products', data);
+export const updateProduct = (id, data) => api.put(`/products/${id}`, data);
+export const deleteProduct = (id) => api.delete(`/products/${id}`);
+export const fetchClientsForProduct = (id, data) => api.post(`/products/${id}/fetch-clients`, data);
+export const generateProductCampaign = (id, data) => api.post(`/products/${id}/campaigns/generate`, data);
+export const getProductCampaigns = (id, params) => api.get(`/products/${id}/campaigns`, { params });
+export const getProductCompanies = (id, params) => api.get(`/products/${id}/companies`, { params });
+export const getProductsAnalyticsOverview = () => api.get('/products/analytics');
+export const getProductAnalytics = (id) => api.get(`/products/${id}/analytics`);
+export const getProductLeads = (id, params) => api.get(`/products/${id}/leads`, { params });
+export const uploadProductAsset = (id, formData) => 
+  api.post(`/products/${id}/assets`, formData, { 
+    headers: { 'Content-Type': 'multipart/form-data' } 
+  });
+export const getProductAssets = (id) => api.get(`/products/${id}/assets`);
+export const deleteProductAsset = (productId, assetId) => 
+  api.delete(`/products/${productId}/assets/${assetId}`);
+export const generateTrackedBrochureLink = (productId, companyId) => 
+  api.post(`/products/${productId}/generate-brochure-link`, null, { params: { company_id: companyId } });
+export const classifyIntent = (replyText) => 
+  api.post('/products/classify-intent', null, { params: { reply_text: replyText } });
+
+// Product Templates
+export const getProductTemplates = (productId) => api.get(`/products/${productId}/templates`);
+export const createProductTemplate = (productId, data) => api.post(`/products/${productId}/templates`, data);
+export const updateProductTemplate = (productId, templateId, data) => 
+  api.put(`/products/${productId}/templates/${templateId}`, data);
+export const deleteProductTemplate = (productId, templateId) => 
+  api.delete(`/products/${productId}/templates/${templateId}`);
+
+// Email Accounts
+export const getEmailAccounts = (params) => api.get('/email-accounts', { params });
+export const createEmailAccount = (data) => api.post('/email-accounts', data);
+export const updateEmailAccount = (id, data) => api.put(`/email-accounts/${id}`, data);
+export const deleteEmailAccount = (id) => api.delete(`/email-accounts/${id}`);
+export const testEmailAccount = (id) => api.post(`/email-accounts/${id}/test`);
+
+// Service-specific endpoints (with /services/ prefix)
+export const getServiceCompanies = (params) => api.get('/services/companies', { params });
+export const getServiceCampaigns = (params) => api.get('/services/campaigns', { params });
+export const getServiceMessages = (params) => api.get('/services/messages', { params });
+export const getServiceLeads = (params) => api.get('/services/leads', { params });
+export const getServiceEmailOpens = (params) => api.get('/services/email-opens', { params });
+export const getServiceUnsubscribes = (params) => api.get('/services/unsubscribes', { params });
+export const getServiceAnalytics = () => api.get('/services/analytics');
+
 export default api;

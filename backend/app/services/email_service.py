@@ -1,14 +1,30 @@
 import aiosmtplib
 import asyncio
+import base64
+import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from typing import Optional, Dict, List
+from email.mime.base import MIMEBase
+from email.mime.application import MIMEApplication
+from email import encoders
+from typing import Optional, Dict, List, TypedDict
 from datetime import datetime
 
 from app.config import settings
 from app.utils.timezone import now_ist
 from app.database import SessionLocal
 from app.models import SystemConfig
+
+
+class AttachmentData(TypedDict):
+    """Type definition for email attachments."""
+    filename: str
+    content_bytes: bytes  # Raw bytes or base64-decoded bytes
+    mimetype: str
+
+
+# Maximum attachment size in bytes (default 10MB)
+MAX_ATTACHMENT_SIZE = int(os.environ.get("PRODUCT_ASSET_MAX_SIZE_MB", "10")) * 1024 * 1024
 
 
 def get_db_setting(key: str, default: str = "") -> str:
@@ -55,13 +71,23 @@ class EmailService:
         to_email: str,
         subject: str,
         content: str,
-        html: bool = True
+        html: bool = True,
+        attachments: List[AttachmentData] = None
     ) -> Dict[str, any]:
-        """Send a single email asynchronously."""
+        """
+        Send a single email asynchronously.
+        
+        Args:
+            to_email: Recipient email address
+            subject: Email subject
+            content: Email body content
+            html: Whether content is HTML
+            attachments: Optional list of attachments with filename, content_bytes, mimetype
+        """
         if self.provider == "smtp":
-            return await self._send_via_smtp_async(to_email, subject, content, html)
+            return await self._send_via_smtp_async(to_email, subject, content, html, attachments)
         elif self.provider == "sendgrid":
-            return await self._send_via_sendgrid_async(to_email, subject, content, html)
+            return await self._send_via_sendgrid_async(to_email, subject, content, html, attachments)
         else:
             raise ValueError(f"Unsupported email provider: {self.provider}")
     
@@ -70,33 +96,69 @@ class EmailService:
         to_email: str,
         subject: str,
         content: str,
-        html: bool = True
+        html: bool = True,
+        attachments: List[AttachmentData] = None
     ) -> Dict[str, any]:
         """Synchronous wrapper for send_email_async."""
-        return asyncio.run(self.send_email_async(to_email, subject, content, html))
+        return asyncio.run(self.send_email_async(to_email, subject, content, html, attachments))
     
     async def _send_via_smtp_async(
         self,
         to_email: str,
         subject: str,
         content: str,
-        html: bool
+        html: bool,
+        attachments: List[AttachmentData] = None
     ) -> Dict[str, any]:
-        """Send email via SMTP asynchronously."""
+        """Send email via SMTP asynchronously with optional attachments."""
         try:
             # Get fresh settings from database
             smtp_settings = self._get_smtp_settings()
             
-            msg = MIMEMultipart('alternative')
+            # Use mixed for attachments, alternative for plain content
+            if attachments:
+                msg = MIMEMultipart('mixed')
+            else:
+                msg = MIMEMultipart('alternative')
+            
             msg['Subject'] = subject
             msg['From'] = f"{smtp_settings['from_name']} <{smtp_settings['from_email']}>"
             msg['To'] = to_email
             
+            # Add body content
             if html:
                 part = MIMEText(content, 'html')
             else:
                 part = MIMEText(content, 'plain')
             msg.attach(part)
+            
+            # Add attachments if provided
+            if attachments:
+                for attachment in attachments:
+                    if not attachment.get('content_bytes'):
+                        continue
+                    
+                    content_bytes = attachment['content_bytes']
+                    filename = attachment.get('filename', 'attachment')
+                    mimetype = attachment.get('mimetype', 'application/octet-stream')
+                    
+                    # Validate size
+                    if len(content_bytes) > MAX_ATTACHMENT_SIZE:
+                        print(f"Attachment {filename} exceeds max size, skipping")
+                        continue
+                    
+                    # Parse mimetype
+                    maintype, subtype = mimetype.split('/', 1) if '/' in mimetype else ('application', 'octet-stream')
+                    
+                    # Create attachment
+                    att_part = MIMEBase(maintype, subtype)
+                    att_part.set_payload(content_bytes)
+                    encoders.encode_base64(att_part)
+                    att_part.add_header(
+                        'Content-Disposition',
+                        f'attachment; filename="{filename}"'
+                    )
+                    msg.attach(att_part)
             
             smtp_config = {
                 'hostname': smtp_settings['smtp_host'],
@@ -114,7 +176,8 @@ class EmailService:
                 "status": "sent",
                 "message_id": f"smtp_{now_ist().timestamp()}",
                 "provider": "smtp",
-                "to": to_email
+                "to": to_email,
+                "attachments_count": len(attachments) if attachments else 0
             }
             
         except Exception as e:
@@ -130,12 +193,13 @@ class EmailService:
         to_email: str,
         subject: str,
         content: str,
-        html: bool
+        html: bool,
+        attachments: List[AttachmentData] = None
     ) -> Dict[str, any]:
-        """Send email via SendGrid asynchronously."""
+        """Send email via SendGrid asynchronously with optional attachments."""
         try:
             from sendgrid import SendGridAPIClient
-            from sendgrid.helpers.mail import Mail
+            from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
             
             message = Mail(
                 from_email=(self.from_email, self.from_name),
@@ -145,6 +209,30 @@ class EmailService:
                 plain_text_content=content if not html else None
             )
             
+            # Add attachments if provided
+            if attachments:
+                for att_data in attachments:
+                    if not att_data.get('content_bytes'):
+                        continue
+                    
+                    content_bytes = att_data['content_bytes']
+                    
+                    # Validate size
+                    if len(content_bytes) > MAX_ATTACHMENT_SIZE:
+                        print(f"Attachment {att_data.get('filename')} exceeds max size, skipping")
+                        continue
+                    
+                    # Encode to base64 for SendGrid
+                    encoded_content = base64.b64encode(content_bytes).decode()
+                    
+                    attachment = Attachment(
+                        FileContent(encoded_content),
+                        FileName(att_data.get('filename', 'attachment')),
+                        FileType(att_data.get('mimetype', 'application/octet-stream')),
+                        Disposition('attachment')
+                    )
+                    message.add_attachment(attachment)
+            
             sg = SendGridAPIClient(settings.sendgrid_api_key)
             response = await asyncio.to_thread(sg.send, message)
             
@@ -152,7 +240,8 @@ class EmailService:
                 "status": "sent",
                 "message_id": response.headers.get('X-Message-Id'),
                 "provider": "sendgrid",
-                "to": to_email
+                "to": to_email,
+                "attachments_count": len(attachments) if attachments else 0
             }
             
         except Exception as e:

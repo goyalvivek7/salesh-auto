@@ -4,13 +4,17 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database import SessionLocal
-from app.models import AutomationConfig, Company, Campaign, Message, CompanyEmail, CompanyPhone
-from app.enums import MessageType, MessageStage, MessageStatus
+from app.models import (
+    AutomationConfig, Company, Campaign, Message, CompanyEmail, CompanyPhone,
+    QualifiedLead, CompanyProduct, ReplyTracking
+)
+from app.enums import MessageType, MessageStage, MessageStatus, IntentType
 from app.services.gpt_service import gpt_service
 from app.services.gemini_service import gemini_service
 from app.services.email_service import email_service
 from app.services.automation_service import unsubscribe_service, reply_tracking_service
 from app.services.google_search_service import google_search_service
+from app.services.intent_classifier import intent_classifier
 from app.utils.timezone import now_ist
 
 
@@ -494,6 +498,7 @@ class SchedulerService:
                         if not primary_phone:
                             message.status = MessageStatus.FAILED
                             db.commit()
+                            print(f"⏭️ Skipped {company.name} - no valid WhatsApp number")
                             continue
                         
                         # Check if replied
@@ -602,17 +607,79 @@ class SchedulerService:
                     db.commit()
                     print(f"🛑 Cancelled {len(future_messages)} future messages for {company.name}")
                     
-                    # Check for negative sentiment
-                    negative_keywords = ["not interested", "stop", "unsubscribe", "remove", "no thanks", "do not contact"]
-                    content_lower = (reply.get('content') or "").lower()
-                    if any(k in content_lower for k in negative_keywords):
+                    # Use intent classifier to analyze the reply
+                    reply_content = reply.get('content') or ""
+                    intent_result = intent_classifier.classify_intent(reply_content)
+                    
+                    print(f"📊 Intent classification for {company.name}: {intent_result.intent.value} (confidence: {intent_result.confidence})")
+                    
+                    # Handle based on intent
+                    if intent_result.intent == IntentType.UNSUBSCRIBE:
                         unsubscribe_service.add_to_unsubscribe_list(
                             db=db,
                             email=company.email,
                             company_id=company.id,
-                            reason=f"Email Reply: {reply.get('content')}"
+                            reason=f"Email Reply (UNSUBSCRIBE intent): {reply_content[:100]}"
                         )
-                        print(f"🚫 Unsubscribed {company.name} due to negative reply")
+                        print(f"🚫 Unsubscribed {company.name} due to unsubscribe intent")
+                    
+                    elif intent_result.intent == IntentType.HOT:
+                        # Create qualified lead for hot intent
+                        # Find if company is associated with any product
+                        company_product = db.query(CompanyProduct).filter(
+                            CompanyProduct.company_id == company.id
+                        ).first()
+                        product_id = company_product.product_id if company_product else None
+                        
+                        # Get the reply tracking record
+                        reply_record = db.query(ReplyTracking).filter(
+                            ReplyTracking.company_id == company.id
+                        ).order_by(ReplyTracking.replied_at.desc()).first()
+                        
+                        # Create qualified lead
+                        qualified_lead = QualifiedLead(
+                            company_id=company.id,
+                            product_id=product_id,
+                            reply_tracking_id=reply_record.id if reply_record else None,
+                            intent=IntentType.HOT,
+                            intent_confidence=intent_result.confidence,
+                            intent_reasons=intent_result.reasons,
+                            status="new",
+                            notified_at=now_ist()
+                        )
+                        db.add(qualified_lead)
+                        db.commit()
+                        print(f"🔥 Created HOT lead for {company.name}")
+                        
+                        # TODO: Send notification to operator
+                    
+                    elif intent_result.intent == IntentType.WARM:
+                        # Create qualified lead for warm intent
+                        company_product = db.query(CompanyProduct).filter(
+                            CompanyProduct.company_id == company.id
+                        ).first()
+                        product_id = company_product.product_id if company_product else None
+                        
+                        reply_record = db.query(ReplyTracking).filter(
+                            ReplyTracking.company_id == company.id
+                        ).order_by(ReplyTracking.replied_at.desc()).first()
+                        
+                        qualified_lead = QualifiedLead(
+                            company_id=company.id,
+                            product_id=product_id,
+                            reply_tracking_id=reply_record.id if reply_record else None,
+                            intent=IntentType.WARM,
+                            intent_confidence=intent_result.confidence,
+                            intent_reasons=intent_result.reasons,
+                            status="new"
+                        )
+                        db.add(qualified_lead)
+                        db.commit()
+                        print(f"🌡️ Created WARM lead for {company.name}")
+                    
+                    # For COLD intent, just log it
+                    elif intent_result.intent == IntentType.COLD:
+                        print(f"❄️ Cold response from {company.name}")
                         
                     print(f"✅ Recorded reply from {company.name}")
         

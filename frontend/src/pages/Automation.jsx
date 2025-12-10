@@ -240,15 +240,18 @@ export default function Automation() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Zap className="w-7 h-7 text-indigo-600" />
-            Automations
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Create and manage automated outreach campaigns
-          </p>
+      <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-3xl shadow-sm shadow-indigo-50 px-6 py-5 lg:px-8 lg:py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 via-sky-500 to-violet-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+            <Zap className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Automation Engine</p>
+            <h1 className="mt-1 text-2xl lg:text-3xl font-semibold text-slate-900">Service Automations</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Create and manage automated outreach campaigns for your services.
+            </p>
+          </div>
         </div>
         <Button
           onClick={() => {

@@ -13,7 +13,7 @@ import {
 import DataTable from '../components/DataTable';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
-import { getUnsubscribedCompanies, removeFromUnsubscribeList } from '../services/api';
+import { getServiceUnsubscribes, removeFromUnsubscribeList } from '../services/api';
 
 export default function UnsubscribedCompanies() {
   const [companies, setCompanies] = useState([]);
@@ -33,7 +33,8 @@ export default function UnsubscribedCompanies() {
   const loadUnsubscribedCompanies = useCallback(async (page = 1, search = '') => {
     try {
       setLoading(true);
-      const res = await getUnsubscribedCompanies({ page, page_size: 20, search });
+      // Use service-specific endpoint with /services/ prefix
+      const res = await getServiceUnsubscribes({ page, page_size: 20, search });
       const items = res.data.items || [];
       setCompanies(items);
       setPagination({

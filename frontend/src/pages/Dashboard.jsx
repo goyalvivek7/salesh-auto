@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   MessageSquare,
@@ -10,6 +10,10 @@ import {
   Loader2,
   ArrowRight,
   Zap,
+  Package,
+  Briefcase,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import {
   BarChart,
@@ -25,9 +29,12 @@ import {
 import { getAutomationStats, getChartData } from '../services/api';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all'); // all, products, services
+  const [redirectPopup, setRedirectPopup] = useState({ open: false, target: null, title: '' });
 
   useEffect(() => {
     loadData();
@@ -49,6 +56,45 @@ export default function Dashboard() {
     }
   };
 
+  // Handle card click - show popup to choose products or services
+  const handleCardClick = (target, title) => {
+    setRedirectPopup({ open: true, target, title });
+  };
+
+  // Navigate based on selection
+  const handleRedirect = (type) => {
+    const { target } = redirectPopup;
+    let path = '';
+    
+    if (type === 'products') {
+      switch (target) {
+        case 'companies': path = '/products/companies'; break;
+        case 'messages': path = '/messages'; break; // Messages shared but filtered
+        case 'opened': path = '/products/opened'; break;
+        case 'leads': path = '/products/leads'; break;
+        case 'campaigns': path = '/products/campaigns'; break;
+        default: path = '/products';
+      }
+    } else {
+      switch (target) {
+        case 'companies': path = '/services/companies'; break;
+        case 'messages': path = '/messages'; break;
+        case 'opened': path = '/services/opened'; break;
+        case 'leads': path = '/services/leads'; break;
+        case 'campaigns': path = '/services/campaigns'; break;
+        default: path = '/services/automation';
+      }
+    }
+    
+    navigate(path);
+    setRedirectPopup({ open: false, target: null, title: '' });
+  };
+
+  // Handle fetch companies button
+  const handleFetchCompanies = () => {
+    setRedirectPopup({ open: true, target: 'fetch', title: 'Fetch New Companies' });
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -63,47 +109,93 @@ export default function Dashboard() {
       value: stats?.total_companies || 0,
       icon: Building2,
       gradient: 'from-blue-500 to-cyan-400',
-      link: '/companies',
+      target: 'companies',
     },
     {
       title: 'Messages Sent',
       value: stats?.messages_sent || 0,
       icon: Send,
       gradient: 'from-violet-500 to-purple-400',
-      link: '/messages',
+      target: 'messages',
     },
     {
       title: 'Email Opens',
       value: stats?.email_opens || 0,
       icon: Eye,
       gradient: 'from-amber-500 to-orange-400',
-      link: '/opened',
+      target: 'opened',
     },
     {
       title: 'Total Replies',
       value: stats?.total_replies || 0,
       icon: Reply,
       gradient: 'from-emerald-500 to-teal-400',
-      link: '/leads',
+      target: 'leads',
     },
     {
       title: 'Qualified Leads',
       value: stats?.total_qualified_leads || 0,
       icon: Users,
       gradient: 'from-rose-500 to-pink-400',
-      link: '/leads',
+      target: 'leads',
     },
     {
       title: 'Campaigns',
       value: stats?.total_campaigns || 0,
       icon: Zap,
       gradient: 'from-indigo-500 to-blue-400',
-      link: '/campaigns',
+      target: 'campaigns',
     },
   ];
 
   return (
     <div className="space-y-6">
+      {/* Redirect Popup Modal */}
+      {redirectPopup.open && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">
+                {redirectPopup.title || 'Choose Section'}
+              </h3>
+              <button
+                onClick={() => setRedirectPopup({ open: false, target: null, title: '' })}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-500 mb-5">
+                Where would you like to go?
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => handleRedirect('products')}
+                  className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-indigo-100 hover:border-indigo-400 hover:bg-indigo-50 transition-all group"
+                >
+                  <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform">
+                    <Package className="w-7 h-7 text-white" />
+                  </div>
+                  <span className="font-semibold text-slate-700 group-hover:text-indigo-600">Products</span>
+                  <span className="text-xs text-slate-400">VMS, CDR, ACS, etc.</span>
+                </button>
+                <button
+                  onClick={() => handleRedirect('services')}
+                  className="flex flex-col items-center gap-3 p-6 rounded-2xl border-2 border-emerald-100 hover:border-emerald-400 hover:bg-emerald-50 transition-all group"
+                >
+                  <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-200 group-hover:scale-110 transition-transform">
+                    <Briefcase className="w-7 h-7 text-white" />
+                  </div>
+                  <span className="font-semibold text-slate-700 group-hover:text-emerald-600">Services</span>
+                  <span className="text-xs text-slate-400">General outreach</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero / Header */}
       <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-3xl shadow-sm shadow-indigo-50 px-6 py-5 lg:px-8 lg:py-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
@@ -119,13 +211,26 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <Link
-            to="/companies"
+          {/* Filter Dropdown */}
+          <div className="relative">
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="appearance-none px-4 py-2.5 pr-10 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
+            >
+              <option value="all">All Data</option>
+              <option value="products">Products Only</option>
+              <option value="services">Services Only</option>
+            </select>
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
+          <button
+            onClick={handleFetchCompanies}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-indigo-600 via-sky-500 to-cyan-400 text-white text-sm font-semibold shadow-lg shadow-sky-200 hover:shadow-xl hover:brightness-105 transition-all"
           >
             <Zap className="w-4 h-4" />
             Fetch New Companies
-          </Link>
+          </button>
         </div>
       </div>
 
@@ -144,10 +249,10 @@ export default function Dashboard() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {statCards.map((card) => (
-            <Link
+            <button
               key={card.title}
-              to={card.link}
-              className="group bg-white/80 border border-slate-100 rounded-2xl px-4 py-4 flex items-center justify-between hover:border-sky-200 hover:shadow-md hover:shadow-sky-50 transition-all"
+              onClick={() => handleCardClick(card.target, card.title)}
+              className="group bg-white/80 border border-slate-100 rounded-2xl px-4 py-4 flex items-center justify-between hover:border-sky-200 hover:shadow-md hover:shadow-sky-50 transition-all text-left w-full"
             >
               <div>
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{card.title}</p>
@@ -164,7 +269,7 @@ export default function Dashboard() {
               >
                 <card.icon className="w-6 h-6 text-white" />
               </div>
-            </Link>
+            </button>
           ))}
         </div>
       </div>
@@ -266,18 +371,18 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-3">
-            <Link
-              to="/companies"
+            <button
+              onClick={() => handleCardClick('companies', 'Find Companies')}
               className="px-6 py-3 bg-white text-indigo-600 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
             >
               Find Companies
-            </Link>
-            <Link
-              to="/campaigns"
+            </button>
+            <button
+              onClick={() => handleCardClick('campaigns', 'Create Campaign')}
               className="px-6 py-3 bg-white/20 text-white rounded-xl font-semibold hover:bg-white/30 transition-colors"
             >
               Create Campaign
-            </Link>
+            </button>
           </div>
         </div>
       </div>

@@ -14,24 +14,46 @@ import {
   TrendingUp,
   Eye,
   UserX,
+  Package,
+  Briefcase,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 
-const navItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/automation', icon: Zap, label: 'Automation' },
-  { path: '/companies', icon: Building2, label: 'Companies' },
-  { path: '/opened', icon: Eye, label: 'Email Opened' },
-  { path: '/unsubscribed', icon: UserX, label: 'Unsubscribed' },
-  { path: '/campaigns', icon: Megaphone, label: 'Campaigns' },
-  { path: '/messages', icon: MessageSquare, label: 'Messages' },
-  { path: '/leads', icon: Users, label: 'Leads' },
-  { path: '/analytics', icon: TrendingUp, label: 'Analytics' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+// Products section navigation
+const productNavItems = [
+  { path: '/products/automation', icon: Zap, label: 'Automation' },
+  { path: '/products', icon: Package, label: 'All Products' },
+  { path: '/products/companies', icon: Building2, label: 'Companies' },
+  { path: '/products/opened', icon: Eye, label: 'Email Opened' },
+  { path: '/products/unsubscribed', icon: UserX, label: 'Unsubscribed' },
+  { path: '/products/campaigns', icon: Megaphone, label: 'Campaigns' },
+  { path: '/products/messages', icon: MessageSquare, label: 'Messages' },
+  { path: '/products/leads', icon: Users, label: 'Leads' },
+  { path: '/products/analytics', icon: TrendingUp, label: 'Analytics' },
+];
+
+// Services section navigation
+const serviceNavItems = [
+  { path: '/services/automation', icon: Zap, label: 'Automation' },
+  { path: '/services/companies', icon: Building2, label: 'Companies' },
+  { path: '/services/opened', icon: Eye, label: 'Email Opened' },
+  { path: '/services/unsubscribed', icon: UserX, label: 'Unsubscribed' },
+  { path: '/services/campaigns', icon: Megaphone, label: 'Campaigns' },
+  { path: '/services/messages', icon: MessageSquare, label: 'Messages' },
+  { path: '/services/leads', icon: Users, label: 'Leads' },
+  { path: '/services/analytics', icon: TrendingUp, label: 'Analytics' },
 ];
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [productsOpen, setProductsOpen] = useState(true);
+  const [servicesOpen, setServicesOpen] = useState(true);
   const location = useLocation();
+
+  // Check if current path is in a section
+  const isInProducts = location.pathname.startsWith('/products');
+  const isInServices = location.pathname.startsWith('/services');
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-indigo-50 to-slate-50">
@@ -63,31 +85,132 @@ export default function Layout({ children }) {
 
           {/* Navigation */}
           <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-400 text-white shadow-md shadow-indigo-100'
-                      : 'text-slate-600 hover:bg-white/70 hover:text-slate-900 hover:shadow-sm'
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
-                      isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    <item.icon className="w-4 h-4" />
+            {/* Dashboard */}
+            <Link
+              to="/"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                location.pathname === '/'
+                  ? 'bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-400 text-white shadow-md shadow-indigo-100'
+                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900 hover:shadow-sm'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
+                location.pathname === '/' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+              }`}>
+                <LayoutDashboard className="w-4 h-4" />
+              </div>
+              <span>Dashboard</span>
+            </Link>
+
+            {/* Products Section */}
+            <div className="pt-3">
+              <button
+                onClick={() => setProductsOpen(!productsOpen)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isInProducts
+                    ? 'bg-indigo-50 text-indigo-700'
+                    : 'text-slate-600 hover:bg-white/70'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                    isInProducts ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    <Package className="w-4 h-4" />
                   </div>
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
+                  <span>Products</span>
+                </div>
+                {productsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              
+              {productsOpen && (
+                <div className="ml-4 mt-1 space-y-1 border-l-2 border-indigo-100 pl-3">
+                  {productNavItems.map((item) => {
+                    const isActive = location.pathname === item.path;
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                          isActive
+                            ? 'bg-indigo-100 text-indigo-700 font-medium'
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Services Section */}
+            <div className="pt-2">
+              <button
+                onClick={() => setServicesOpen(!servicesOpen)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isInServices
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-slate-600 hover:bg-white/70'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                    isInServices ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <span>Services</span>
+                </div>
+                {servicesOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              
+              {servicesOpen && (
+                <div className="ml-4 mt-1 space-y-1 border-l-2 border-emerald-100 pl-3">
+                  {serviceNavItems.map((item) => {
+                    const isActive = location.pathname === item.path;
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                          isActive
+                            ? 'bg-emerald-100 text-emerald-700 font-medium'
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Divider */}
+            <div className="pt-3 pb-1">
+              <div className="border-t border-slate-200"></div>
+            </div>
+
+            {/* Settings */}
+            <Link
+              to="/settings"
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                location.pathname === '/settings'
+                  ? 'bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-400 text-white shadow-md shadow-indigo-100'
+                  : 'text-slate-600 hover:bg-white/70 hover:text-slate-900 hover:shadow-sm'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm ${
+                location.pathname === '/settings' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+              }`}>
+                <Settings className="w-4 h-4" />
+              </div>
+              <span>Settings</span>
+            </Link>
           </nav>
 
           {/* Footer */}

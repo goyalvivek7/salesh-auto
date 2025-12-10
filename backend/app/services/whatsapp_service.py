@@ -1,6 +1,7 @@
 import requests
 import json
-from typing import Dict, List
+import re
+from typing import Dict, List, Optional
 from datetime import datetime
 
 from app.config import settings
@@ -35,7 +36,133 @@ class WhatsAppService:
             self.source_number = getattr(settings, 'gupshup_source_number', '')
             
         self.base_url = f"https://partner.gupshup.io/partner/app/{self.app_id}/v3/message"
+        self.contact_check_url = f"https://api.gupshup.io/wa/app/{self.app_id}/contact"
     
+    def normalize_phone(self, phone: str) -> str:
+        """
+        Normalize phone number to digits only with country code.
+        Assumes Indian numbers if no country code present.
+        """
+        if not phone:
+            return ""
+        # Remove all non-digit characters except leading +
+        cleaned = re.sub(r'[^\d+]', '', phone)
+        # Remove leading +
+        cleaned = cleaned.lstrip('+')
+        # If starts with 0, remove it
+        cleaned = cleaned.lstrip('0')
+        # If it's 10 digits (Indian number without country code), add 91
+        if len(cleaned) == 10:
+            cleaned = '91' + cleaned
+        return cleaned
+    
+    def check_whatsapp_number(self, phone: str) -> bool:
+        """
+        Check if a phone number is registered on WhatsApp using Gupshup API.
+        
+        Args:
+            phone: Phone number to check (any format)
+            
+        Returns:
+            True if number is on WhatsApp, False otherwise
+        """
+        if not self.app_token or not self.app_id:
+            print("⚠️ Gupshup credentials not configured for WhatsApp check")
+            return False
+        
+        normalized = self.normalize_phone(phone)
+        if not normalized or len(normalized) < 10:
+            print(f"   ❌ Invalid phone number: {phone}")
+            return False
+        
+        # Skip dummy/test numbers
+        demo_patterns = ['987654321', '9876543210', '1234567890', '0000000000', '1111111111']
+        if any(demo in normalized for demo in demo_patterns):
+            print(f"   ❌ Dummy number detected: {phone}")
+            return False
+        
+        try:
+            # Gupshup contact check endpoint
+            url = f"{self.contact_check_url}/{normalized}"
+            headers = {
+                "accept": "application/json",
+                "Authorization": self.app_token
+            }
+            
+            print(f"   🔍 Checking WhatsApp status for: {normalized}")
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                # Gupshup returns {"status": "valid"} or similar for WhatsApp users
+                status = result.get("status", "").lower()
+                is_valid = status in ["valid", "success", "true", "active"]
+                
+                if is_valid:
+                    print(f"   ✅ {normalized} is on WhatsApp")
+                else:
+                    print(f"   ❌ {normalized} is NOT on WhatsApp (status: {status})")
+                return is_valid
+            else:
+                print(f"   ⚠️ WhatsApp check failed for {normalized}: HTTP {response.status_code}")
+                # Try alternative approach - send a check message without actually sending
+                return self._fallback_whatsapp_check(normalized)
+                
+        except Exception as e:
+            print(f"   ⚠️ Error checking WhatsApp for {normalized}: {e}")
+            return False
+    
+    def _fallback_whatsapp_check(self, phone: str) -> bool:
+        """
+        Fallback method to check WhatsApp using the messaging API's validation.
+        Some Gupshup configurations don't expose the contact check endpoint.
+        """
+        try:
+            # Use Gupshup's user existence check via partner API
+            url = f"https://partner.gupshup.io/partner/app/{self.app_id}/wa/user/{phone}"
+            headers = {
+                "accept": "application/json",
+                "Authorization": self.app_token
+            }
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                # Check various response formats Gupshup might use
+                if result.get("exists") or result.get("valid") or result.get("status") == "valid":
+                    print(f"   ✅ {phone} is on WhatsApp (fallback check)")
+                    return True
+                    
+            return False
+        except Exception as e:
+            print(f"   ⚠️ Fallback WhatsApp check failed: {e}")
+            return False
+    
+    def validate_phone_numbers(self, phones: List[str]) -> List[str]:
+        """
+        Validate multiple phone numbers and return only those on WhatsApp.
+        
+        Args:
+            phones: List of phone numbers to check
+            
+        Returns:
+            List of phone numbers that are registered on WhatsApp
+        """
+        if not phones:
+            return []
+        
+        valid_phones = []
+        for phone in phones:
+            if phone and self.check_whatsapp_number(phone):
+                # Store normalized version
+                normalized = self.normalize_phone(phone)
+                if normalized and normalized not in valid_phones:
+                    valid_phones.append(normalized)
+        
+        print(f"   📱 WhatsApp validation: {len(valid_phones)}/{len(phones)} numbers valid")
+        return valid_phones
+
     def send_template_message(
         self,
         to_number: str,
@@ -277,6 +404,265 @@ class WhatsAppService:
                     sender_name,       # {{2}}
                     sender_company     # {{3}}
                 ]
+
+    def send_media_message(
+        self,
+        to_number: str,
+        media_url: str,
+        caption: str = None,
+        media_type: str = "document"  # document, image, video
+    ) -> Dict[str, any]:
+        """
+        Send a WhatsApp media message (document, image, or video).
+        
+        Args:
+            to_number: Recipient phone number (with country code)
+            media_url: Public URL of the media file
+            caption: Optional caption for the media
+            media_type: Type of media (document, image, video)
+            
+        Returns:
+            Dict with status and message_id
+        """
+        if not self.app_token or not self.source_number or not self.app_id:
+            return {
+                "status": "failed",
+                "error": "Gupshup credentials not configured"
+            }
+        
+        # Validate phone number
+        clean_phone = ''.join(filter(str.isdigit, to_number))
+        demo_numbers = ['987654321', '9876543210', '1234567890', '0000000000']
+        if any(demo in clean_phone for demo in demo_numbers):
+            return {
+                "status": "skipped",
+                "error": "Dummy/test phone number detected",
+                "to": to_number
+            }
+        
+        try:
+            # Prepare v3 API payload for media message
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to_number,
+                "type": media_type
+            }
+            
+            # Add media object based on type
+            media_object = {
+                "link": media_url
+            }
+            if caption:
+                media_object["caption"] = caption
+            
+            if media_type == "document":
+                # For documents, extract filename from URL
+                filename = media_url.split('/')[-1] if '/' in media_url else "document.pdf"
+                media_object["filename"] = filename
+            
+            payload[media_type] = media_object
+            
+            headers = {
+                "accept": "application/json",
+                "Authorization": self.app_token,
+                "Content-Type": "application/json"
+            }
+            
+            print(f"🔵 Gupshup Media Message Request:")
+            print(f"   URL: {self.base_url}")
+            print(f"   Payload: {json.dumps(payload, indent=2)}")
+            
+            response = requests.post(
+                self.base_url,
+                headers=headers,
+                json=payload
+            )
+            
+            result = response.json()
+            
+            print(f"🟢 Gupshup Media Response:")
+            print(f"   Status Code: {response.status_code}")
+            print(f"   Body: {json.dumps(result, indent=2)}")
+            
+            if response.status_code in [200, 202]:
+                msg_id = result.get('messages', [{}])[0].get('id')
+                print(f"✅ WhatsApp media sent successfully! Message ID: {msg_id}")
+                return {
+                    "status": "sent",
+                    "message_id": msg_id,
+                    "provider": "gupshup_v3",
+                    "to": to_number,
+                    "media_type": media_type,
+                    "raw_response": result
+                }
+            else:
+                error_msg = result.get('error', {}).get('message', 'Unknown error')
+                print(f"❌ WhatsApp media send failed: {error_msg}")
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "details": result,
+                    "provider": "gupshup_v3"
+                }
+                
+        except Exception as e:
+            print(f"❌ Exception sending WhatsApp media: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "status": "failed",
+                "error": str(e),
+                "provider": "gupshup_v3"
+            }
+    
+    def send_message_with_brochure_link(
+        self,
+        to_number: str,
+        message_text: str,
+        brochure_url: str,
+        brochure_name: str = "Brochure"
+    ) -> Dict[str, any]:
+        """
+        Send a WhatsApp text message with a brochure download link.
+        This is a fallback when direct document upload is not available.
+        
+        Args:
+            to_number: Recipient phone number
+            message_text: The main message text
+            brochure_url: URL to the brochure
+            brochure_name: Display name for the brochure
+            
+        Returns:
+            Dict with status and message_id
+        """
+        # Append brochure link to message
+        full_message = f"{message_text}\n\n📎 {brochure_name}: {brochure_url}"
+        
+        # Send as a text message via interactive message with button
+        if not self.app_token or not self.source_number or not self.app_id:
+            return {
+                "status": "failed",
+                "error": "Gupshup credentials not configured"
+            }
+        
+        try:
+            # Send interactive message with URL button
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to_number,
+                "type": "interactive",
+                "interactive": {
+                    "type": "button",
+                    "body": {
+                        "text": message_text[:1024]  # Body limit
+                    },
+                    "action": {
+                        "buttons": [
+                            {
+                                "type": "reply",
+                                "reply": {
+                                    "id": "download_brochure",
+                                    "title": f"📄 View {brochure_name}"
+                                }
+                            }
+                        ]
+                    }
+                }
+            }
+            
+            headers = {
+                "accept": "application/json",
+                "Authorization": self.app_token,
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                self.base_url,
+                headers=headers,
+                json=payload
+            )
+            
+            result = response.json()
+            
+            if response.status_code in [200, 202]:
+                msg_id = result.get('messages', [{}])[0].get('id')
+                return {
+                    "status": "sent",
+                    "message_id": msg_id,
+                    "provider": "gupshup_v3",
+                    "to": to_number,
+                    "brochure_included": True,
+                    "raw_response": result
+                }
+            else:
+                # Fallback to simple text with link
+                return self._send_simple_text_with_link(to_number, full_message)
+                
+        except Exception as e:
+            print(f"❌ Error sending brochure link message: {str(e)}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "provider": "gupshup_v3"
+            }
+    
+    def _send_simple_text_with_link(
+        self,
+        to_number: str,
+        message: str
+    ) -> Dict[str, any]:
+        """Send a simple text message (fallback for brochure links)."""
+        try:
+            payload = {
+                "messaging_product": "whatsapp",
+                "recipient_type": "individual",
+                "to": to_number,
+                "type": "text",
+                "text": {
+                    "body": message
+                }
+            }
+            
+            headers = {
+                "accept": "application/json",
+                "Authorization": self.app_token,
+                "Content-Type": "application/json"
+            }
+            
+            response = requests.post(
+                self.base_url,
+                headers=headers,
+                json=payload
+            )
+            
+            result = response.json()
+            
+            if response.status_code in [200, 202]:
+                msg_id = result.get('messages', [{}])[0].get('id')
+                return {
+                    "status": "sent",
+                    "message_id": msg_id,
+                    "provider": "gupshup_v3",
+                    "to": to_number,
+                    "raw_response": result
+                }
+            else:
+                error_msg = result.get('error', {}).get('message', 'Unknown error')
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "details": result,
+                    "provider": "gupshup_v3"
+                }
+                
+        except Exception as e:
+            return {
+                "status": "failed",
+                "error": str(e),
+                "provider": "gupshup_v3"
+            }
 
     def get_templates(self) -> List[Dict]:
         """

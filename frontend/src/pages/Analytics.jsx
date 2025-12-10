@@ -27,7 +27,7 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import { getDetailedAnalytics } from '../services/api';
+import { getServiceAnalytics, getDetailedAnalytics } from '../services/api';
 import Button from '../components/Button';
 
 export default function Analytics() {
@@ -38,8 +38,12 @@ export default function Analytics() {
   const loadAnalytics = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await getDetailedAnalytics(days);
-      setData(res.data);
+      // Use both service analytics and detailed analytics
+      const [serviceRes, detailedRes] = await Promise.all([
+        getServiceAnalytics(),
+        getDetailedAnalytics(days),
+      ]);
+      setData({ ...detailedRes.data, service: serviceRes.data });
     } catch (error) {
       console.error('Failed to load analytics:', error);
     } finally {

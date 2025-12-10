@@ -8,10 +8,14 @@ from sqlalchemy import func
 from datetime import datetime, timedelta
 
 from app.database import get_db
-from app.models import AutomationConfig, UnsubscribeList, EmailOpenTracking, Company, Campaign, Message, WhatsAppMessageEvent
-from app.enums import MessageStatus, MessageType
+from app.models import (
+    AutomationConfig, UnsubscribeList, EmailOpenTracking, Company, Campaign, 
+    Message, WhatsAppMessageEvent, QualifiedLead, CompanyProduct, ReplyTracking
+)
+from app.enums import MessageStatus, MessageType, IntentType
 import json
 from app.services.automation_service import unsubscribe_service, reply_tracking_service
+from app.services.intent_classifier import intent_classifier
 from app.utils.timezone import now_ist
 
 
@@ -563,16 +567,65 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
         db.commit()
         print(f"🛑 Cancelled {len(future_messages)} future messages for {company.name}")
         
-        # Check for negative sentiment to unsubscribe
-        negative_keywords = ["not interested", "stop", "unsubscribe", "remove", "no thanks", "don't contact", "do not contact", "wrong number"]
-        if any(k in message_text.lower() for k in negative_keywords):
+        # Use intent classifier to analyze the reply
+        intent_result = intent_classifier.classify_intent(message_text)
+        
+        print(f"📊 WhatsApp Intent classification for {company.name}: {intent_result.intent.value} (confidence: {intent_result.confidence})")
+        
+        # Find product association for this company
+        company_product = db.query(CompanyProduct).filter(
+            CompanyProduct.company_id == company.id
+        ).first()
+        product_id = company_product.product_id if company_product else None
+        
+        # Get the reply tracking record
+        reply_record = db.query(ReplyTracking).filter(
+            ReplyTracking.company_id == company.id
+        ).order_by(ReplyTracking.replied_at.desc()).first()
+        
+        # Handle based on intent
+        if intent_result.intent == IntentType.UNSUBSCRIBE:
             unsubscribe_service.add_to_unsubscribe_list(
                 db=db,
                 email=company.email,
                 company_id=company.id,
-                reason=f"WhatsApp Reply: {message_text}"
+                reason=f"WhatsApp Reply (UNSUBSCRIBE intent): {message_text[:100]}"
             )
-            print(f"🚫 Unsubscribed {company.name} due to negative reply")
+            print(f"🚫 Unsubscribed {company.name} due to unsubscribe intent")
+        
+        elif intent_result.intent == IntentType.HOT:
+            # Create qualified lead for hot intent
+            qualified_lead = QualifiedLead(
+                company_id=company.id,
+                product_id=product_id,
+                reply_tracking_id=reply_record.id if reply_record else None,
+                intent=IntentType.HOT,
+                intent_confidence=intent_result.confidence,
+                intent_reasons=intent_result.reasons,
+                status="new",
+                notified_at=now_ist()
+            )
+            db.add(qualified_lead)
+            db.commit()
+            print(f"🔥 Created HOT lead from WhatsApp for {company.name}")
+        
+        elif intent_result.intent == IntentType.WARM:
+            # Create qualified lead for warm intent
+            qualified_lead = QualifiedLead(
+                company_id=company.id,
+                product_id=product_id,
+                reply_tracking_id=reply_record.id if reply_record else None,
+                intent=IntentType.WARM,
+                intent_confidence=intent_result.confidence,
+                intent_reasons=intent_result.reasons,
+                status="new"
+            )
+            db.add(qualified_lead)
+            db.commit()
+            print(f"🌡️ Created WARM lead from WhatsApp for {company.name}")
+        
+        elif intent_result.intent == IntentType.COLD:
+            print(f"❄️ Cold WhatsApp response from {company.name}")
         
         print(f"✅ Recorded WhatsApp reply from {company.name}: \"{message_text}\"")
         
@@ -582,6 +635,8 @@ async def whatsapp_webhook(request: Request, db: Session = Depends(get_db)):
             "company": company.name,
             "company_id": company.id,
             "reply_text": message_text,
+            "intent": intent_result.intent.value,
+            "intent_confidence": intent_result.confidence,
             "note": "All future messages to this company will be automatically stopped"
         }
         

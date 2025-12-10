@@ -19,7 +19,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Modal from '../components/Modal';
 import {
-  getMessages,
+  getServiceMessages,
   sendMessage,
   sendWhatsAppMessage,
   deleteMessages,
@@ -54,12 +54,11 @@ export default function Messages() {
       const params = {
         page,
         page_size: 20,
-        search,
         ...(filters.type !== 'all' && { type: filters.type }),
         ...(filters.status !== 'all' && { status: filters.status }),
-        ...(filters.stage !== 'all' && { stage: filters.stage }),
       };
-      const res = await getMessages(params);
+      // Use service-specific endpoint with /services/ prefix
+      const res = await getServiceMessages(params);
       setMessages(res.data.items || []);
       setPagination({
         page: res.data.page,

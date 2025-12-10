@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
   Download,
@@ -18,8 +19,9 @@ import DataTable from '../components/DataTable';
 import Modal from '../components/Modal';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
+import CompanyDetailModal from '../components/CompanyDetailModal';
 import {
-  getCompanies,
+  getServiceCompanies,
   getCompany,
   fetchCompaniesFromAI,
   deleteCompanies,
@@ -65,11 +67,13 @@ export default function Companies() {
     dateFrom: '',
     dateTo: '',
   });
+  const [searchParams] = useSearchParams();
 
   const loadCompanies = useCallback(async (page = 1, search = '') => {
     try {
       setLoading(true);
-      const res = await getCompanies({ page, page_size: 20, search });
+      // Use service-specific endpoint with /services/ prefix
+      const res = await getServiceCompanies({ page, page_size: 20, search });
       setCompanies(res.data.items);
       setPagination({
         page: res.data.page,
@@ -158,6 +162,19 @@ export default function Companies() {
     }
   };
 
+  // Support deep-linking like /companies?id=36 by auto-opening the detail modal
+  useEffect(() => {
+    const idParam = searchParams.get('id');
+    if (!idParam) return;
+
+    // If modal already open for this company, skip
+    const id = Number(idParam);
+    if (detailOpen && activeCompany && activeCompany.id === id) return;
+
+    // Trigger the same flow as clicking a row
+    handleRowClick({ id });
+  }, [searchParams, detailOpen, activeCompany]);
+
   const startEditingCompany = () => {
     if (!activeCompany) return;
     setEditForm({
@@ -213,6 +230,9 @@ export default function Companies() {
         ['SENT', 'DELIVERED', 'READ'].includes(msg.status)
     );
   };
+
+  const allPhones = activeCompany?.phones || [];
+  const whatsappPhones = allPhones.filter((p) => p.is_verified);
 
   const totalCompanies = pagination.total || companies.length;
   const companiesWithOutreach = companies.filter(
@@ -412,27 +432,31 @@ export default function Companies() {
   return (
     <div className="space-y-6">
       {/* Hero / header */}
-      <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-3xl shadow-sm shadow-indigo-50 px-6 py-5 lg:px-8 lg:py-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold text-sky-600 uppercase tracking-wide flex items-center gap-1">
-            <Building2 className="w-3.5 h-3.5" />
-            Company pipeline
-          </p>
-          <h1 className="mt-1 text-2xl lg:text-3xl font-semibold text-slate-900">
-            Companies in your outreach workspace
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage AI-discovered companies, see who has outreach scheduled, and track who replied.
-          </p>
-          <p className="mt-2 text-xs text-slate-400">
-            Total companies: {totalCompanies.toLocaleString()} · With outreach: {companiesWithOutreach.toLocaleString()} · With replies: {companiesWithReplies.toLocaleString()}
-          </p>
+      <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-3xl shadow-sm shadow-emerald-50 px-6 py-5 lg:px-8 lg:py-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-100">
+            <Building2 className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">
+              Services · Companies
+            </p>
+            <h1 className="mt-1 text-2xl lg:text-3xl font-semibold text-slate-900">
+              Service Companies
+            </h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Manage AI-discovered companies for service outreach
+            </p>
+            <p className="mt-2 text-xs text-slate-400">
+              Total: {totalCompanies.toLocaleString()} · With outreach: {companiesWithOutreach.toLocaleString()} · With replies: {companiesWithReplies.toLocaleString()}
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col sm:flex-row  items-stretch sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
           <Button
             onClick={() => setFetchModalOpen(true)}
             icon={Sparkles}
-            className="bg-gradient-to-r from-indigo-600 via-sky-500 to-cyan-400 hover:brightness-105 shadow-lg shadow-sky-200"
+            className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:brightness-105 shadow-lg shadow-emerald-200"
           >
             AI Fetch Companies
           </Button>
@@ -450,7 +474,7 @@ export default function Companies() {
             <p className="mt-1 text-2xl font-semibold text-slate-900">{totalCompanies.toLocaleString()}</p>
             <p className="mt-1 text-[11px] text-slate-400">All industries and countries</p>
           </div>
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-sky-500 flex items-center justify-center text-white shadow-md shadow-sky-100">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-md shadow-emerald-100">
             <Building2 className="w-5 h-5" />
           </div>
         </div>
@@ -460,7 +484,7 @@ export default function Companies() {
             <p className="mt-1 text-2xl font-semibold text-slate-900">{companiesWithOutreach.toLocaleString()}</p>
             <p className="mt-1 text-[11px] text-slate-400">At least one email or WhatsApp generated</p>
           </div>
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-sky-100">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-teal-500 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-teal-100">
             <MessageSquare className="w-5 h-5" />
           </div>
         </div>
@@ -487,10 +511,10 @@ export default function Companies() {
       </div>
 
       {/* Filters card */}
-      <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-3xl shadow-sm shadow-indigo-50 p-5 lg:p-6 space-y-4">
+      <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-3xl shadow-sm shadow-emerald-50 p-5 lg:p-6 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-sky-600 uppercase tracking-wide">Filters</p>
+            <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Filters</p>
             <p className="text-xs text-slate-500 mt-0.5">
               Refine results by industry, country, replies, or search term.
             </p>
@@ -715,280 +739,21 @@ export default function Companies() {
       </Modal>
 
       {/* Company Detail Modal */}
-      <Modal
+      <CompanyDetailModal
         isOpen={detailOpen}
         onClose={() => {
           setDetailOpen(false);
           setActiveCompany(null);
-          setEditMode(false);
         }}
-        title="Company details"
-        size="xl"
-      >
-        {detailLoading || !activeCompany ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Hero card */}
-            <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl shadow-sm shadow-indigo-50 px-5 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-sky-500 to-cyan-400 flex items-center justify-center text-white font-semibold text-lg">
-                  {activeCompany.name?.charAt(0) || '?'}
-                </div>
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">{activeCompany.name}</h2>
-                  <p className="text-sm text-slate-500 mt-0.5">
-                    {activeCompany.industry} • {activeCompany.country}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Added on{' '}
-                    {new Date(activeCompany.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2 justify-end">
-                {activeCompany.website && (
-                  <a
-                    href={activeCompany.website.startsWith('http') ? activeCompany.website : `https://${activeCompany.website}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-white text-indigo-600 text-xs font-medium shadow-sm hover:bg-slate-50"
-                  >
-                    <Globe className="w-3.5 h-3.5" />
-                    Visit website
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-                {activeCompany.email && (
-                  <a
-                    href={`mailto:${activeCompany.email}`}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-indigo-600 text-white text-xs font-medium shadow-sm hover:bg-indigo-700"
-                  >
-                    <Mail className="w-3.5 h-3.5" />
-                    Email company
-                  </a>
-                )}
-              </div>
-            </div>
-
-            {/* Main grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Left: basic info + recent messages */}
-              <div className="lg:col-span-2 space-y-4">
-                <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm shadow-slate-100">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-slate-900">Basic information</h3>
-                    {activeCompany && (
-                      <button
-                        type="button"
-                        onClick={editMode ? cancelEditingCompany : startEditingCompany}
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
-                      >
-                        {editMode ? 'Cancel' : 'Edit'}
-                      </button>
-                    )}
-                  </div>
-                  {editMode ? (
-                    <form
-                      className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm"
-                      onSubmit={handleSaveCompany}
-                    >
-                      <div>
-                        <p className="text-slate-400 text-xs">Name</p>
-                        <input
-                          type="text"
-                          value={editForm.name}
-                          onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, name: e.target.value }))
-                          }
-                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Industry</p>
-                        <input
-                          type="text"
-                          value={editForm.industry}
-                          onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, industry: e.target.value }))
-                          }
-                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Country</p>
-                        <input
-                          type="text"
-                          value={editForm.country}
-                          onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, country: e.target.value }))
-                          }
-                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Email</p>
-                        <input
-                          type="email"
-                          value={editForm.email}
-                          onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, email: e.target.value }))
-                          }
-                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Phone</p>
-                        <input
-                          type="text"
-                          value={editForm.phone}
-                          onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, phone: e.target.value }))
-                          }
-                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Website</p>
-                        <input
-                          type="text"
-                          value={editForm.website}
-                          onChange={(e) =>
-                            setEditForm((prev) => ({ ...prev, website: e.target.value }))
-                          }
-                          className="mt-0.5 w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white/80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div className="md:col-span-2 flex justify-end gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={cancelEditingCompany}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={savingCompany}
-                          className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {savingCompany ? 'Saving...' : 'Save changes'}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                      <div>
-                        <p className="text-slate-400 text-xs">Email</p>
-                        <p className="text-slate-700 break-all">{activeCompany.email || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Phone</p>
-                        <p className="text-slate-700">{activeCompany.phone || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Country</p>
-                        <p className="text-slate-700">{activeCompany.country}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-400 text-xs">Website</p>
-                        <p className="text-slate-700 break-all">{activeCompany.website || '—'}</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm shadow-slate-100">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-slate-900">Recent activity</h3>
-                    <span className="text-xs text-slate-400">
-                      {activeCompany.messages?.length || 0} messages · {activeCompany.replies?.length || 0} replies
-                    </span>
-                  </div>
-                  {activeCompany.messages && activeCompany.messages.length > 0 ? (
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                      {activeCompany.messages.slice(0, 5).map((msg) => (
-                        <div
-                          key={msg.id}
-                          className="flex items-start justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5"
-                        >
-                          <div>
-                            <p className="text-xs font-medium text-slate-500">
-                              {msg.type} • {msg.stage}
-                            </p>
-                            <p className="text-sm text-slate-800 line-clamp-1">
-                              {msg.subject || msg.content}
-                            </p>
-                            {msg.sent_at && (
-                              <p className="text-[11px] text-slate-400 mt-0.5">
-                                Sent {new Date(msg.sent_at).toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <Badge
-                            variant={msg.status === 'SENT' ? 'success' : msg.status === 'DRAFT' ? 'warning' : 'default'}
-                          >
-                            {msg.status}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">No messages yet for this company.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Right: stats / replies */}
-              <div className="space-y-4">
-                <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm shadow-slate-100">
-                  <h3 className="text-sm font-semibold text-slate-900 mb-3">Status</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Total messages</span>
-                      <span className="font-medium text-slate-900">{activeCompany.messages?.length || 0}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Sent</span>
-                      <span className="font-medium text-slate-900">
-                        {(activeCompany.messages || []).filter((m) => m.status === 'SENT').length}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Draft</span>
-                      <span className="font-medium text-slate-900">
-                        {(activeCompany.messages || []).filter((m) => m.status === 'DRAFT').length}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Replies</span>
-                      <span className="font-medium text-slate-900">{activeCompany.replies?.length || 0}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white/80 backdrop-blur-xl border border-white/70 rounded-2xl p-5 shadow-sm shadow-slate-100">
-                  <h3 className="text-sm font-semibold text-slate-900 mb-3">Latest reply</h3>
-                  {activeCompany.replies && activeCompany.replies.length > 0 ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-slate-400">
-                        {new Date(activeCompany.replies[0].replied_at).toLocaleString()}
-                      </p>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                        {activeCompany.replies[0].reply_content || 'Reply received'}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-slate-500">No replies recorded for this company yet.</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+        company={activeCompany}
+        loading={detailLoading}
+        onUpdated={(updated) => {
+          setActiveCompany(updated);
+          setCompanies((prev) =>
+            prev.map((company) => (company.id === updated.id ? updated : company))
+          );
+        }}
+      />
     </div>
   );
 }

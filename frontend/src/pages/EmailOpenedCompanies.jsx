@@ -12,7 +12,7 @@ import {
 import DataTable from '../components/DataTable';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
-import { getEmailOpenedCompanies } from '../services/api';
+import { getServiceEmailOpens } from '../services/api';
 
 export default function EmailOpenedCompanies() {
   const [companies, setCompanies] = useState([]);
@@ -35,7 +35,8 @@ export default function EmailOpenedCompanies() {
   const loadOpenedCompanies = useCallback(async (page = 1, search = '') => {
     try {
       setLoading(true);
-      const res = await getEmailOpenedCompanies({ page, page_size: 20, search });
+      // Use service-specific endpoint with /services/ prefix
+      const res = await getServiceEmailOpens({ page, page_size: 20, search });
       const items = res.data.items || [];
       setCompanies(items);
       setPagination({

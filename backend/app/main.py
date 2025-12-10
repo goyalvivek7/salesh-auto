@@ -32,13 +32,25 @@ from app.services.gpt_service import gpt_service
 from app.services.gemini_service import gemini_service
 from app.services.email_service import email_service
 from app.services.whatsapp_service import whatsapp_service
+from app.services.google_search_service import google_search_service
 from app import crud
-from app.models import Campaign, Message, Interaction, Company, Template, SystemConfig
+from app.models import Campaign, Message, Interaction, Company, Template, SystemConfig, CompanyPhone
 from app.enums import MessageType, MessageStage, MessageStatus
 from datetime import datetime, timedelta
 from fastapi import Request
 from app.utils.timezone import now_ist
 from app import settings_endpoints
+from app import product_endpoints
+from app import email_accounts_endpoints
+from app import service_endpoints
+
+def _is_demo_phone(phone: str) -> bool:
+    digits = "".join(ch for ch in phone if ch.isdigit())
+    demo_numbers = ["987654321", "9876543210", "1234567890", "0000000000", "1111111111"]
+    return any(demo in digits for demo in demo_numbers)
+
+def _filter_demo_phones(phones: List[str]) -> List[str]:
+    return [p for p in phones if not _is_demo_phone(p)]
 
 # Create FastAPI application
 app = FastAPI(
@@ -59,6 +71,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(settings_endpoints.router)
+app.include_router(product_endpoints.router)
+app.include_router(email_accounts_endpoints.router)
+app.include_router(service_endpoints.router)
 
 
 @app.on_event("startup")
@@ -194,6 +209,68 @@ async def fetch_companies(
                             company[field] = gemini_details[field]
                             print(f"  ✓ Filled {field} from Gemini")
             
+            # Step 2: Use Google Search + website scrape for real contact details
+            # Collect *all* candidate phone numbers (Google + AI)
+            all_phones: List[str] = []
+            try:
+                google_results = google_search_service.search_company_details(
+                    company_name=company["name"],
+                    industry=request.industry,
+                    country=request.country,
+                )
+
+                google_emails = google_results.get("emails") or []
+                google_phones = google_results.get("phones") or []
+                google_website = google_results.get("website")
+
+                # Use Google results if available
+                if google_emails and not company.get("email"):
+                    company["email"] = google_emails[0]
+                    print(f"  ✓ Found email from Google: {google_emails[0]}")
+                if google_website and not company.get("website"):
+                    company["website"] = google_website
+                    print(f"  ✓ Found website from Google: {google_website}")
+                
+                # Collect all phone candidates (Google + AI-generated)
+                all_phones.extend(google_phones)
+                if company.get("phone") and company.get("phone") not in all_phones:
+                    all_phones.append(company.get("phone"))
+            except Exception as e:
+                print(f"  ⚠️ Google search error for {company['name']}: {e}")
+                # Still use AI-generated phone if available
+                if company.get("phone"):
+                    all_phones.append(company.get("phone"))
+
+            # Remove known demo/test numbers before deduplication and persistence
+            all_phones = _filter_demo_phones(all_phones)
+
+            # Deduplicate phone candidates while preserving order
+            seen_phones = set()
+            deduped_phones: List[str] = []
+            for phone in all_phones:
+                if phone and phone not in seen_phones:
+                    seen_phones.add(phone)
+                    deduped_phones.append(phone)
+            all_phones = deduped_phones
+            # Store full list so we can persist non-WhatsApp phones too
+            company["all_phones"] = all_phones
+
+            # Step 3: Validate phone numbers via WhatsApp - only keep WhatsApp-registered numbers
+            valid_whatsapp_phones = []
+            if all_phones:
+                try:
+                    print(f"  📱 Validating {len(all_phones)} phone(s) for {company['name']}...")
+                    valid_whatsapp_phones = whatsapp_service.validate_phone_numbers(all_phones)
+                except Exception as e:
+                    print(f"  ⚠️ WhatsApp validation error: {e}")
+            
+            # Store validated WhatsApp phones (or empty if none valid)
+            company["whatsapp_phones"] = valid_whatsapp_phones
+            # Primary phone is first valid WhatsApp number, or blank. We keep
+            # non-WhatsApp phones only in CompanyPhone so we don't send WA to
+            # unverified numbers, but the UI can still display them.
+            company["phone"] = valid_whatsapp_phones[0] if valid_whatsapp_phones else None
+            
             processed_companies.append(company)
         
         # Convert to CompanyCreate schema
@@ -211,6 +288,49 @@ async def fetch_companies(
         
         # Save to database
         db_companies = crud.create_companies_bulk(db, companies_to_create)
+        
+        # Store all phones in CompanyPhone table.
+        # Match by company name to find the db_company.
+        name_to_whatsapp = {c["name"]: c.get("whatsapp_phones", []) for c in processed_companies}
+        name_to_all_phones = {c["name"]: c.get("all_phones", []) for c in processed_companies}
+
+        for db_company in db_companies:
+            whatsapp_phones = name_to_whatsapp.get(db_company.name, []) or []
+            all_phones = name_to_all_phones.get(db_company.name, []) or []
+
+            # First, ensure all WhatsApp-verified phones are stored as verified
+            for idx, phone in enumerate(whatsapp_phones):
+                existing_phone = db.query(CompanyPhone).filter(
+                    CompanyPhone.company_id == db_company.id,
+                    CompanyPhone.phone == phone,
+                ).first()
+                if not existing_phone:
+                    db.add(
+                        CompanyPhone(
+                            company_id=db_company.id,
+                            phone=phone,
+                            is_primary=(idx == 0),
+                            is_verified=True,
+                        )
+                    )
+
+            # Then store any additional (non-WhatsApp) phones as unverified so
+            # the UI can show them under "All phone numbers".
+            for phone in all_phones:
+                existing_phone = db.query(CompanyPhone).filter(
+                    CompanyPhone.company_id == db_company.id,
+                    CompanyPhone.phone == phone,
+                ).first()
+                if not existing_phone:
+                    db.add(
+                        CompanyPhone(
+                            company_id=db_company.id,
+                            phone=phone,
+                            is_primary=False,
+                            is_verified=False,
+                        )
+                    )
+        db.commit()
         
         return FetchCompaniesResponse(
             message=f"Successfully fetched and saved {len(db_companies)} companies in {request.industry} industry from {request.country}",
@@ -230,23 +350,90 @@ async def get_all_companies(
     page: int = 1,
     page_size: int = 20,
     search: Optional[str] = None,
+    has_product: Optional[bool] = None,
     db: Session = Depends(get_db)
 ):
     """
-    Get all companies from database with pagination and search.
+    Get companies with optional product association filter.
     
     Args:
         page: Page number (1-indexed)
         page_size: Number of items per page
-        search: Search term for company name, industry, or country
+        search: Search term for company or product
+        has_product: If True, return one row per (company, product) association.
+                     If False, only service companies (no product).
+                     If None, return plain companies without product join.
         db: Database session
         
     Returns:
-        Paginated response with companies
+        Paginated response with companies (and optionally product info)
     """
-    # Build query
+    from app.models import CompanyProduct, Product
+
+    # Pagination params
+    skip = (page - 1) * page_size
+
+    # --- Case 1: Product companies (used by ProductCompanies when no product filter) ---
+    if has_product is True:
+        # Build query on CompanyProduct joined with Company and Product
+        query = db.query(CompanyProduct).join(Company).join(Product)
+
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                (Company.name.ilike(search_term)) |
+                (Company.industry.ilike(search_term)) |
+                (Company.country.ilike(search_term)) |
+                (Product.name.ilike(search_term))
+            )
+
+        total = query.count()
+        total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+        company_products = (
+            query.order_by(CompanyProduct.fetched_at.desc())
+            .offset(skip)
+            .limit(page_size)
+            .all()
+        )
+
+        items = []
+        for cp in company_products:
+            company = cp.company
+            product = cp.product
+            items.append({
+                "id": cp.id,
+                "company_id": cp.company_id,
+                "product_id": cp.product_id,
+                "relevance_score": cp.relevance_score,
+                "score_reasons": cp.score_reasons,
+                "fetched_at": cp.fetched_at,
+                "company": CompanyResponse.model_validate(company) if company else None,
+                "product": {
+                    "id": product.id,
+                    "name": product.name,
+                    "slug": product.slug,
+                } if product else None,
+            })
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+        }
+
+    # --- Case 2: Service companies or generic list (no product join) ---
+    # Build base query on Company
     query = db.query(Company)
-    
+
+    # Filter by product association when has_product is False
+    if has_product is False:
+        # Only companies without product associations (service companies)
+        product_company_ids = db.query(CompanyProduct.company_id).distinct().subquery()
+        query = query.filter(~Company.id.in_(product_company_ids))
+
     # Apply search filter
     if search:
         search_term = f"%{search}%"
@@ -255,23 +442,23 @@ async def get_all_companies(
             (Company.industry.ilike(search_term)) |
             (Company.country.ilike(search_term))
         )
-    
-    # Get total count
+
     total = query.count()
-    
-    # Calculate pagination
-    skip = (page - 1) * page_size
-    total_pages = (total + page_size - 1) // page_size
-    
-    # Get paginated results
-    companies = query.order_by(Company.created_at.desc()).offset(skip).limit(page_size).all()
-    
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 1
+
+    companies = (
+        query.order_by(Company.created_at.desc())
+        .offset(skip)
+        .limit(page_size)
+        .all()
+    )
+
     return {
         "items": [CompanyResponse.model_validate(c) for c in companies],
         "total": total,
         "page": page,
         "page_size": page_size,
-        "total_pages": total_pages
+        "total_pages": total_pages,
     }
 
 
@@ -571,13 +758,50 @@ async def generate_campaign(
         raise HTTPException(status_code=500, detail=f"Internal Error: {str(e)}")
 
 
-@app.get("/api/campaigns", response_model=List[CampaignResponse])
+@app.get("/api/campaigns")
 async def get_all_campaigns(
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+    has_product: Optional[bool] = None,
     db: Session = Depends(get_db)
 ):
-    """Get all campaigns with their messages."""
-    campaigns = db.query(Campaign).all()
-    return campaigns
+    """
+    Get all campaigns with their messages.
+    
+    Args:
+        has_product: If True, only product campaigns. If False, only service campaigns.
+    """
+    query = db.query(Campaign)
+    
+    # Filter by product association
+    if has_product is True:
+        query = query.filter(Campaign.product_id.isnot(None))
+    elif has_product is False:
+        query = query.filter(Campaign.product_id.is_(None))
+    
+    # Apply search filter
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(Campaign.name.ilike(search_term))
+    
+    # Get total count
+    total = query.count()
+    
+    # Calculate pagination
+    skip = (page - 1) * page_size
+    total_pages = (total + page_size - 1) // page_size
+    
+    # Get paginated results
+    campaigns = query.order_by(Campaign.created_at.desc()).offset(skip).limit(page_size).all()
+    
+    return {
+        "items": [CampaignResponse.model_validate(c) for c in campaigns],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages
+    }
 
 
 @app.get("/api/campaigns/{campaign_id}", response_model=CampaignResponse)
@@ -747,12 +971,14 @@ async def start_campaign_now(
 
 
 @app.get("/api/messages")
-async def get_all_companies(
+async def get_all_messages(
     page: int = 1,
     page_size: int = 20,
     search: Optional[str] = None,
     type: MessageType = None,
     status: MessageStatus = None,
+    has_product: Optional[bool] = None,
+    product_id: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     """Get all messages with optional filtering and pagination."""
@@ -765,6 +991,17 @@ async def get_all_companies(
     # Apply status filter
     if status:
         query = query.filter(Message.status == status)
+    
+    # Filter by product association
+    if has_product is not None:
+        if has_product:
+            query = query.filter(Message.product_id.isnot(None))
+        else:
+            query = query.filter(Message.product_id.is_(None))
+    
+    # Filter by specific product
+    if product_id:
+        query = query.filter(Message.product_id == product_id)
     
     # Apply search filter
     if search:
@@ -785,13 +1022,19 @@ async def get_all_companies(
     # Get paginated results with company names
     messages = query.order_by(Message.created_at.desc()).offset(skip).limit(page_size).all()
     
-    # Build response with company names
+    # Build response with company and product names
     items = []
     for m in messages:
         msg_dict = MessageResponse.model_validate(m).model_dump()
         # Add company name
         company = db.query(Company).filter(Company.id == m.company_id).first()
         msg_dict['company_name'] = company.name if company else f"Company #{m.company_id}"
+        # Add product name if available
+        if m.product_id:
+            product = db.query(Product).filter(Product.id == m.product_id).first()
+            msg_dict['product_name'] = product.name if product else None
+        else:
+            msg_dict['product_name'] = None
         items.append(msg_dict)
     
     return {
