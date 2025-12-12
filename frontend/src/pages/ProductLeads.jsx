@@ -10,8 +10,16 @@ import {
   RefreshCw,
   Download,
   Star,
+  Building2,
+  Phone,
+  Globe,
+  ExternalLink,
+  Calendar,
+  TrendingUp,
 } from 'lucide-react';
+import Badge from '../components/Badge';
 import { getProducts, getProductLeads } from '../services/api';
+import api from '../services/api';
 
 export default function ProductLeads() {
   const [page, setPage] = useState(1);
@@ -231,79 +239,128 @@ export default function ProductLeads() {
         </button>
       </div>
 
-      {/* Content */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/70 shadow-sm shadow-slate-100 overflow-hidden">
-        {!selectedProduct ? (
-          <div className="text-center py-16">
-            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 font-medium">No qualified leads yet</p>
-            <p className="text-sm text-slate-400 mt-1">Leads will appear here when companies reply to your outreach</p>
-          </div>
-        ) : isLoading ? (
-          <div className="flex justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
-          </div>
-        ) : leads.length === 0 ? (
-          <div className="text-center py-16">
-            <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500 font-medium">No qualified leads yet</p>
-            <p className="text-sm text-slate-400 mt-1">Leads will appear here when companies reply to your outreach</p>
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Company</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Industry</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Email</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Phone</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Intent</th>
-                    <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Created</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {leads.map((lead) => (
-                    <tr key={lead.id} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-medium text-slate-900">{lead.company?.name || `Company #${lead.company_id}`}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{lead.company?.industry || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{lead.company?.email || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{lead.company?.phone || '-'}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-1 text-xs rounded-lg ${
-                          lead.intent === 'HOT' ? 'bg-red-100 text-red-700' :
-                          lead.intent === 'WARM' ? 'bg-amber-100 text-amber-700' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
-                          {lead.intent}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-500">{new Date(lead.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      {/* Content - Lead Cards */}
+      {!selectedProduct ? (
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/70 shadow-sm shadow-slate-100 p-12 text-center">
+          <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">Select a product to view leads</p>
+          <p className="text-sm text-slate-400 mt-1">Choose a product from the filter above to see its qualified leads</p>
+        </div>
+      ) : isLoading ? (
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/70 shadow-sm shadow-slate-100 p-12 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto"></div>
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/70 shadow-sm shadow-slate-100 p-12 text-center">
+          <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500 font-medium">No qualified leads yet</p>
+          <p className="text-sm text-slate-400 mt-1">Leads will appear here when companies reply to your outreach</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Lead Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {leads.map((lead) => (
+              <div
+                key={lead.id}
+                className="bg-white/80 backdrop-blur-xl rounded-2xl border border-white/70 shadow-sm shadow-slate-100 p-5 hover:shadow-md transition-shadow"
+              >
+                {/* Lead Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white font-semibold">
+                      {lead.company?.name?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-900">
+                        {lead.company?.name || `Company #${lead.company_id}`}
+                      </h3>
+                      <p className="text-xs text-slate-500">{lead.company?.industry || 'Unknown Industry'}</p>
+                    </div>
+                  </div>
+                  <Badge
+                    variant={
+                      lead.intent === 'HOT' ? 'danger' :
+                      lead.intent === 'WARM' ? 'warning' : 'info'
+                    }
+                  >
+                    <Flame className="w-3 h-3 mr-1" />
+                    {lead.intent}
+                  </Badge>
+                </div>
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
+                {/* Contact Info */}
+                <div className="space-y-2 mb-4">
+                  {lead.company?.email && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Mail className="w-4 h-4 text-slate-400" />
+                      <a href={`mailto:${lead.company.email}`} className="text-indigo-600 hover:underline">
+                        {lead.company.email}
+                      </a>
+                    </div>
+                  )}
+                  {lead.company?.phone && (
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <Phone className="w-4 h-4 text-slate-400" />
+                      {lead.company.phone}
+                    </div>
+                  )}
+                  {lead.company?.website && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Globe className="w-4 h-4 text-slate-400" />
+                      <a
+                        href={lead.company.website.startsWith('http') ? lead.company.website : `https://${lead.company.website}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-600 hover:underline flex items-center gap-1"
+                      >
+                        Visit Website <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {new Date(lead.created_at).toLocaleDateString()}
+                  </div>
+                  {lead.company?.country && (
+                    <Badge variant="default">{lead.company.country}</Badge>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 bg-white/80 backdrop-blur-xl rounded-2xl border border-white/70">
               <p className="text-sm text-slate-500">
                 Showing {total > 0 ? startItem : 0} to {endItem} of {total}
               </p>
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-50">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-50"
+                >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="px-3 py-1 bg-teal-600 text-white text-sm rounded">{page}</span>
-                <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-50">
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-50"
+                >
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

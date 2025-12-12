@@ -2,10 +2,6 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Building2,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-  Package,
   Mail,
   MessageSquare,
   Globe,
@@ -13,9 +9,11 @@ import {
   Users,
   Phone,
   ExternalLink,
-  Loader2,
+  Download,
+  Trash2,
   CheckCircle2,
 } from 'lucide-react';
+import DataTable from '../components/DataTable';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 import CompanyDetailModal from '../components/CompanyDetailModal';
@@ -31,6 +29,7 @@ export default function ProductCompanies() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [activeCompany, setActiveCompany] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedRows, setSelectedRows] = useState([]);
 
   // Fetch products for filter dropdown
   const { data: productsData } = useQuery({
@@ -70,10 +69,11 @@ export default function ProductCompanies() {
   };
 
   const handleRowClick = async (row) => {
+    const company = row.company || row;
     try {
       setDetailOpen(true);
       setDetailLoading(true);
-      const res = await getCompany(row.id);
+      const res = await getCompany(company.id);
       setActiveCompany(res.data);
     } catch (error) {
       console.error('Failed to load company details:', error);
@@ -81,6 +81,201 @@ export default function ProductCompanies() {
       setDetailLoading(false);
     }
   };
+
+  // Helper to check if a stage was sent
+  const isStageSent = (row, type, stage) => {
+    const company = row.company || row;
+    const messages = company.messages || [];
+    return messages.some(
+      (msg) =>
+        msg.type === type &&
+        msg.stage === stage &&
+        ['SENT', 'DELIVERED', 'READ'].includes(msg.status)
+    );
+  };
+
+  const hasReplies = (row) => {
+    const company = row.company || row;
+    return (company.replies || []).length > 0;
+  };
+
+  // Define columns matching Services Companies style
+  const columns = [
+    {
+      key: 'name',
+      label: 'Company',
+      render: (_, row) => {
+        const company = row.company || row;
+        return (
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center text-white font-semibold">
+              {company.name?.charAt(0) || '?'}
+            </div>
+            <div>
+              <p className="font-medium text-gray-900">{company.name}</p>
+              <p className="text-xs text-gray-500">{company.industry}</p>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'country',
+      label: 'Country',
+      render: (_, row) => {
+        const company = row.company || row;
+        return company.country ? (
+          <Badge variant="default">{company.country}</Badge>
+        ) : (
+          <span className="text-gray-400 text-sm">—</span>
+        );
+      },
+    },
+    {
+      key: 'email',
+      label: 'Email',
+      render: (_, row) => {
+        const company = row.company || row;
+        return company.email ? (
+          <a
+            href={`mailto:${company.email}`}
+            className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span className="text-sm">{company.email}</span>
+          </a>
+        ) : (
+          <span className="text-gray-400 text-sm">—</span>
+        );
+      },
+    },
+    {
+      key: 'phone',
+      label: 'Phone',
+      render: (_, row) => {
+        const company = row.company || row;
+        return company.phone ? (
+          <span className="flex items-center gap-1 text-sm text-gray-700">
+            <Phone className="w-3.5 h-3.5 text-gray-400" />
+            {company.phone}
+          </span>
+        ) : (
+          <span className="text-gray-400 text-sm">—</span>
+        );
+      },
+    },
+    {
+      key: 'website',
+      label: 'Website',
+      render: (_, row) => {
+        const company = row.company || row;
+        return company.website ? (
+          <a
+            href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-sm"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            Visit
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        ) : (
+          <span className="text-gray-400 text-sm">—</span>
+        );
+      },
+    },
+    {
+      key: 'created_at',
+      label: 'Added',
+      render: (_, row) => {
+        const company = row.company || row;
+        return (
+          <span className="text-xs text-slate-500">
+            {company.created_at ? new Date(company.created_at).toLocaleDateString() : '—'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'outreach',
+      label: 'Outreach',
+      render: (_, row) => {
+        const stages = [
+          { key: 'INITIAL', label: 'I' },
+          { key: 'FOLLOWUP_1', label: 'F1' },
+          { key: 'FOLLOWUP_2', label: 'F2' },
+        ];
+        return (
+          <div className="space-y-1 text-[11px]">
+            <div className="flex items-center gap-1">
+              {stages.map((stage) => {
+                const sent = isStageSent(row, 'WHATSAPP', stage.key);
+                return (
+                  <div
+                    key={stage.key}
+                    className={`w-6 h-6 rounded-full border flex items-center justify-center ${
+                      sent
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <MessageSquare
+                      className={`w-3 h-3 ${
+                        sent ? 'text-emerald-500' : 'text-slate-300'
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1">
+              {stages.map((stage) => {
+                const sent = isStageSent(row, 'EMAIL', stage.key);
+                return (
+                  <div
+                    key={stage.key}
+                    className={`w-6 h-6 rounded-full border flex items-center justify-center ${
+                      sent
+                        ? 'bg-indigo-50 border-indigo-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <Mail
+                      className={`w-3 h-3 ${
+                        sent ? 'text-indigo-500' : 'text-slate-300'
+                      }`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'replies',
+      label: 'Reply',
+      render: (_, row) => {
+        const replied = hasReplies(row);
+        return (
+          <div className="flex items-center justify-start">
+            {replied ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 text-[11px] font-medium">
+                <CheckCircle2 className="w-3 h-3" />
+                Replied
+              </span>
+            ) : (
+              <span className="text-[11px] text-slate-400">No reply</span>
+            )}
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -224,98 +419,48 @@ export default function ProductCompanies() {
       </div>
 
       {/* Table */}
-      <div className="bg-white/80 backdrop-blur-xl rounded-3xl border border-white/70 shadow-sm shadow-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Company</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Country</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Email</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Phone</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Website</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Product</th>
-                <th className="text-left py-3 px-4 text-xs font-medium text-slate-500 uppercase">Outreach</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                  </td>
-                </tr>
-              ) : companies.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center">
-                    <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                    <p className="text-slate-500">No companies found</p>
-                    <p className="text-sm text-slate-400">Fetch clients for a product to see them here</p>
-                  </td>
-                </tr>
-              ) : (
-                companies.map((item) => {
-                  const company = item.company || item;
-                  const productName = item.product?.name;
-                  return (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-slate-50 cursor-pointer"
-                      onClick={() => handleRowClick(company)}
-                    >
-                      <td className="py-3 px-4">
-                        <span className="font-medium text-slate-900">{company.name}</span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{company.country || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{company.email || '-'}</td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{company.phone || '-'}</td>
-                      <td className="py-3 px-4">
-                        {company.website ? (
-                          <a href={company.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline text-sm flex items-center gap-1">
-                            <Globe className="w-3 h-3" /> Visit
-                          </a>
-                        ) : '-'}
-                      </td>
-                      <td className="py-3 px-4">
-                        {productName && (
-                          <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-xs rounded-lg">
-                            {productName}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">-</td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 bg-slate-50">
-          <p className="text-sm text-slate-500">
-            Showing {total > 0 ? startItem : 0} to {endItem} of {total}
-          </p>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-50 disabled:hover:bg-transparent"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-3 py-1 bg-indigo-600 text-white text-sm rounded">{page}</span>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-50 disabled:hover:bg-transparent"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        data={companies}
+        loading={isLoading}
+        pagination={{
+          page,
+          pageSize,
+          total,
+          totalPages,
+        }}
+        onPageChange={(newPage) => setPage(newPage)}
+        selectedRows={selectedRows}
+        onSelectRow={(id) =>
+          setSelectedRows((prev) =>
+            prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
+          )
+        }
+        onSelectAll={(checked) =>
+          setSelectedRows(checked ? companies.map((c) => c.id) : [])
+        }
+        emptyMessage="No companies found. Fetch clients for a product to see them here."
+        actions={
+          selectedRows.length > 0 && (
+            <div className="flex justify-end">
+              <Button
+                variant="danger"
+                size="sm"
+                icon={Trash2}
+                onClick={() => {
+                  if (confirm(`Delete ${selectedRows.length} companies?`)) {
+                    setSelectedRows([]);
+                  }
+                }}
+              >
+                Delete ({selectedRows.length})
+              </Button>
+            </div>
+          )
+        }
+        showSearch={false}
+        onRowClick={handleRowClick}
+      />
 
       <CompanyDetailModal
         isOpen={detailOpen}

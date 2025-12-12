@@ -21,14 +21,21 @@ from app.utils.timezone import now_ist
 
 class AutomationConfigCreate(BaseModel):
     name: str = None
-    industry: str
-    country: str
+    industry: str = None  # Single industry (legacy)
+    industries: str = None  # Comma-separated industries
+    country: str = None  # Single country (legacy)
+    countries: str = None  # Comma-separated countries
     daily_limit: int = 30
     send_time_hour: int = 10
     send_time_minute: int = 0
     followup_day_1: int = 3
     followup_day_2: int = 7
     run_duration_days: int = 7
+    product_id: int = None  # For product-specific automations
+    message_type: str = "EMAIL"  # EMAIL, WHATSAPP, or BOTH
+    schedule_type: str = "manual"  # manual, daily, weekly
+    type: str = None  # 'product' or 'service'
+    has_product: bool = None  # Filter flag
 
 
 class AutomationConfigUpdate(BaseModel):
@@ -39,6 +46,14 @@ class AutomationConfigUpdate(BaseModel):
     followup_day_1: int = None
     followup_day_2: int = None
     run_duration_days: int = None
+    product_id: int = None
+    message_type: str = None
+    industry: str = None
+    industries: str = None
+    country: str = None
+    countries: str = None
+    schedule_type: str = None
+
 
 
 async def create_automation_config(
@@ -46,26 +61,70 @@ async def create_automation_config(
     db: Session = Depends(get_db)
 ):
     """Create a new automation configuration."""
+    from app.models import Product
+    
+    # Use comma-separated industries/countries if provided, else fall back to single values
+    industry = config.industries or config.industry or "General"
+    country = config.countries or config.country or "United States"
+    
     # Generate a default name if not provided
-    name = config.name or f"{config.industry} - {config.country} Automation"
+    name = config.name or f"{industry.split(',')[0].strip()} - {country.split(',')[0].strip()} Automation"
     
     new_config = AutomationConfig(
         name=name,
-        industry=config.industry,
-        country=config.country,
+        industry=industry,  # Store comma-separated values
+        country=country,    # Store comma-separated values
         daily_limit=config.daily_limit,
         send_time_hour=config.send_time_hour,
         send_time_minute=config.send_time_minute,
         followup_day_1=config.followup_day_1,
         followup_day_2=config.followup_day_2,
         run_duration_days=config.run_duration_days,
+        product_id=config.product_id,
         status="draft",
         is_active=False
     )
     db.add(new_config)
     db.commit()
     db.refresh(new_config)
-    return new_config
+    
+    # Build response with product info
+    result = {
+        "id": new_config.id,
+        "name": new_config.name,
+        "industry": new_config.industry,
+        "country": new_config.country,
+        "daily_limit": new_config.daily_limit,
+        "send_time_hour": new_config.send_time_hour,
+        "send_time_minute": new_config.send_time_minute,
+        "followup_day_1": new_config.followup_day_1,
+        "followup_day_2": new_config.followup_day_2,
+        "run_duration_days": new_config.run_duration_days,
+        "product_id": new_config.product_id,
+        "status": new_config.status,
+        "is_active": new_config.is_active,
+        "created_at": new_config.created_at,
+        "message_type": config.message_type or 'EMAIL',
+        "companies_per_run": new_config.daily_limit,
+        "schedule_type": config.schedule_type or "manual",
+        # Return arrays for frontend
+        "target_industries": [i.strip() for i in new_config.industry.split(',') if i.strip()],
+        "target_countries": [c.strip() for c in new_config.country.split(',') if c.strip()],
+    }
+
+    
+    # Add product info if available
+    if new_config.product_id:
+        product = db.query(Product).filter(Product.id == new_config.product_id).first()
+        if product:
+            result["product"] = {
+                "id": product.id,
+                "name": product.name,
+                "slug": product.slug
+            }
+    
+    return result
+
 
 
 async def update_automation_config(
@@ -74,6 +133,8 @@ async def update_automation_config(
     db: Session = Depends(get_db)
 ):
     """Update an existing automation configuration."""
+    from app.models import Product
+    
     existing = db.query(AutomationConfig).filter(AutomationConfig.id == config_id).first()
     if not existing:
         raise HTTPException(status_code=404, detail="Automation config not found")
@@ -93,10 +154,56 @@ async def update_automation_config(
         existing.followup_day_2 = config.followup_day_2
     if config.run_duration_days is not None:
         existing.run_duration_days = config.run_duration_days
+    if config.product_id is not None:
+        existing.product_id = config.product_id
+    # Prefer comma-separated values over single values
+    if config.industries is not None:
+        existing.industry = config.industries
+    elif config.industry is not None:
+        existing.industry = config.industry
+    if config.countries is not None:
+        existing.country = config.countries
+    elif config.country is not None:
+        existing.country = config.country
     
     db.commit()
     db.refresh(existing)
-    return existing
+    
+    # Build response with product info
+    result = {
+        "id": existing.id,
+        "name": existing.name,
+        "industry": existing.industry,
+        "country": existing.country,
+        "daily_limit": existing.daily_limit,
+        "send_time_hour": existing.send_time_hour,
+        "send_time_minute": existing.send_time_minute,
+        "followup_day_1": existing.followup_day_1,
+        "followup_day_2": existing.followup_day_2,
+        "run_duration_days": existing.run_duration_days,
+        "product_id": existing.product_id,
+        "status": existing.status,
+        "is_active": existing.is_active,
+        "created_at": existing.created_at,
+        "message_type": config.message_type or 'EMAIL',
+        "companies_per_run": existing.daily_limit,
+        "schedule_type": config.schedule_type or "manual",
+        "target_industries": [i.strip() for i in (existing.industry or '').split(',') if i.strip()],
+        "target_countries": [c.strip() for c in (existing.country or '').split(',') if c.strip()],
+    }
+    
+    # Add product info if available
+    if existing.product_id:
+        product = db.query(Product).filter(Product.id == existing.product_id).first()
+        if product:
+            result["product"] = {
+                "id": product.id,
+                "name": product.name,
+                "slug": product.slug
+            }
+    
+    return result
+
 
 
 async def delete_automation_config(
@@ -112,11 +219,71 @@ async def delete_automation_config(
     db.commit()
     return {"message": "Automation deleted successfully"}
 
+async def get_automation_configs(
+    type: str = None,
+    has_product: bool = None,
+    db: Session = Depends(get_db)
+):
+    """Get all automation configurations with optional filtering."""
+    from app.models import Product
+    
+    query = db.query(AutomationConfig)
+    
+    # Filter by product association
+    if has_product is True:
+        query = query.filter(AutomationConfig.product_id.isnot(None))
+    elif has_product is False:
+        query = query.filter(AutomationConfig.product_id.is_(None))
+    
+    configs = query.order_by(AutomationConfig.created_at.desc()).all()
+    
+    # Build response with product info
+    results = []
+    for config in configs:
+        result = {
+            "id": config.id,
+            "name": config.name,
+            "industry": config.industry,
+            "country": config.country,
+            "daily_limit": config.daily_limit,
+            "send_time_hour": config.send_time_hour,
+            "send_time_minute": config.send_time_minute,
+            "followup_day_1": config.followup_day_1,
+            "followup_day_2": config.followup_day_2,
+            "run_duration_days": config.run_duration_days,
+            "product_id": config.product_id,
+            "status": config.status,
+            "is_active": config.is_active,
+            "created_at": config.created_at,
+            "last_run_at": config.last_run_at,
+            "start_date": config.start_date,
+            "end_date": config.end_date,
+            "days_completed": config.days_completed,
+            "total_companies_fetched": config.total_companies_fetched,
+            "total_messages_sent": config.total_messages_sent,
+            "total_replies": config.total_replies,
+            # Frontend-expected fields
+            "message_type": "EMAIL",  # Default for now
+            "companies_per_run": config.daily_limit,
+            "schedule_type": "manual",
+            "target_industries": [i.strip() for i in (config.industry or '').split(',') if i.strip()],
+            "target_countries": [c.strip() for c in (config.country or '').split(',') if c.strip()],
+        }
+        
+        # Add product info if available
+        if config.product_id:
+            product = db.query(Product).filter(Product.id == config.product_id).first()
+            if product:
+                result["product"] = {
+                    "id": product.id,
+                    "name": product.name,
+                    "slug": product.slug
+                }
+        
+        results.append(result)
+    
+    return results
 
-async def get_automation_configs(db: Session = Depends(get_db)):
-    """Get all automation configurations."""
-    configs = db.query(AutomationConfig).all()
-    return configs
 
 
 async def get_automation_config(config_id: int, db: Session = Depends(get_db)):

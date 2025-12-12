@@ -5,6 +5,7 @@ const variants = {
   warning: 'bg-yellow-100 text-yellow-700',
   danger: 'bg-red-100 text-red-700',
   purple: 'bg-purple-100 text-purple-700',
+  info: 'bg-sky-100 text-sky-700',
 };
 
 export default function Badge({ children, variant = 'default', className = '' }) {

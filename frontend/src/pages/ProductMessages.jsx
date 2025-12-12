@@ -48,21 +48,43 @@ export default function ProductMessages() {
   const loadMessages = useCallback(async (page = 1) => {
     try {
       setLoading(true);
+      
+      // Build params - fetch all messages and filter client-side for product association
       const params = {
         page,
-        page_size: 20,
-        has_product: true,
-        ...(selectedProduct && { product_id: selectedProduct }),
+        page_size: 100, // Fetch more to filter client-side
         ...(filters.type !== 'all' && { type: filters.type }),
         ...(filters.status !== 'all' && { status: filters.status }),
       };
+      
       const res = await api.get('/messages', { params });
-      setMessages(res.data.items || []);
+      let items = res.data.items || [];
+      
+      // Filter for messages that have a product association (via campaign or direct)
+      items = items.filter((msg) => {
+        // Check if message has product_id or campaign has product
+        const hasProduct = msg.product_id || msg.campaign?.product_id || msg.campaign?.product;
+        
+        // If a specific product is selected, filter by that product
+        if (selectedProduct) {
+          return msg.product_id === selectedProduct || 
+                 msg.campaign?.product_id === selectedProduct ||
+                 msg.campaign?.product?.id === selectedProduct;
+        }
+        
+        return hasProduct;
+      });
+      
+      // Apply client-side pagination
+      const startIdx = (page - 1) * 20;
+      const paginatedItems = items.slice(startIdx, startIdx + 20);
+      
+      setMessages(paginatedItems);
       setPagination({
-        page: res.data.page,
-        pageSize: res.data.page_size,
-        total: res.data.total,
-        totalPages: res.data.total_pages,
+        page,
+        pageSize: 20,
+        total: items.length,
+        totalPages: Math.ceil(items.length / 20) || 1,
       });
     } catch (error) {
       console.error('Failed to load messages:', error);

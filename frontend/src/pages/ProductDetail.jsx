@@ -25,7 +25,10 @@ import {
   FileEdit,
   Save,
   X,
+  Loader2,
 } from 'lucide-react';
+import Modal from '../components/Modal';
+import Button from '../components/Button';
 import {
   getProduct,
   getProductCompanies,
@@ -40,6 +43,7 @@ import {
   startCampaignNow,
   getCompany,
   updateCompany,
+  getCampaign,
 } from '../services/api';
 import { useToast } from '../components/Toast';
 import CompanyDetailModal from '../components/CompanyDetailModal';
@@ -61,6 +65,10 @@ export default function ProductDetail() {
     limit: 10,
     attach_brochure: true,
   });
+  // Campaign detail modal state (for product campaigns)
+  const [campaignDetailOpen, setCampaignDetailOpen] = useState(false);
+  const [campaignDetailLoading, setCampaignDetailLoading] = useState(false);
+  const [activeCampaign, setActiveCampaign] = useState(null);
 
   // When navigating between different products, reset pagination so
   // the companies/campaigns lists and counts line up for each product.
@@ -179,6 +187,9 @@ export default function ProductDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries(['product-campaigns', id]);
       showToast('Campaign started successfully', 'success');
+      if (activeCampaign) {
+        loadCampaignDetail(activeCampaign.id);
+      }
     },
     onError: (error) => {
       showToast(error.response?.data?.detail || 'Failed to start campaign', 'error');
@@ -215,6 +226,34 @@ export default function ProductDetail() {
     const file = e.target.files?.[0];
     if (file) {
       uploadMutation.mutate(file);
+    }
+  };
+
+  // Campaign detail helpers
+  const getMessageStats = (campaign) => {
+    const messages = campaign?.messages || [];
+    const sent = messages.filter((m) => ['SENT', 'DELIVERED', 'READ'].includes(m.status)).length;
+    const pending = messages.filter((m) => m.status === 'PENDING' || m.status === 'DRAFT').length;
+    return { total: messages.length, sent, pending };
+  };
+
+  const getCampaignCompanies = (campaign) => {
+    const messages = campaign?.messages || [];
+    const companyIds = [...new Set(messages.map((m) => m.company_id))];
+    return companyIds.length;
+  };
+
+  const loadCampaignDetail = async (campaignId) => {
+    try {
+      setCampaignDetailLoading(true);
+      const res = await getCampaign(campaignId);
+      setActiveCampaign(res.data);
+      setCampaignDetailOpen(true);
+    } catch (error) {
+      console.error('Failed to load campaign details:', error);
+      showToast('Failed to load campaign details', 'error');
+    } finally {
+      setCampaignDetailLoading(false);
     }
   };
 
@@ -503,7 +542,7 @@ export default function ProductDetail() {
                   {campaigns.map((campaign) => (
                     <div
                       key={campaign.id}
-                      onClick={() => navigate(`/campaigns?id=${campaign.id}`)}
+                      onClick={() => loadCampaignDetail(campaign.id)}
                       className="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors"
                     >
                       <div className="flex items-center gap-4">
@@ -521,7 +560,10 @@ export default function ProductDetail() {
                         </div>
                       </div>
                       <button
-                        onClick={(e) => { e.stopPropagation(); startCampaignMutation.mutate(campaign.id); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startCampaignMutation.mutate(campaign.id);
+                        }}
                         disabled={startCampaignMutation.isPending}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 text-sm"
                       >
@@ -694,6 +736,125 @@ export default function ProductDetail() {
           queryClient.invalidateQueries(['product', id]);
         }}
       />
+
+      {/* Campaign Detail Modal */}
+      <Modal
+        isOpen={campaignDetailOpen}
+        onClose={() => {
+          setCampaignDetailOpen(false);
+          setActiveCampaign(null);
+        }}
+        title="Campaign Details"
+        size="lg"
+      >
+        {campaignDetailLoading || !activeCampaign ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-white">
+                  <Megaphone className="w-7 h-7" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">{activeCampaign.name}</h3>
+                  <div className="flex items-center gap-2 mt-1 text-sm text-slate-500">
+                    <Calendar className="w-4 h-4" />
+                    {activeCampaign.created_at
+                      ? new Date(activeCampaign.created_at).toLocaleDateString()
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+              <Button
+                icon={Play}
+                size="sm"
+                onClick={() => startCampaignMutation.mutate(activeCampaign.id)}
+                disabled={startCampaignMutation.isPending}
+              >
+                {startCampaignMutation.isPending ? 'Starting...' : 'Start Now'}
+              </Button>
+            </div>
+
+            {/* Stats */}
+            {(() => {
+              const stats = getMessageStats(activeCampaign);
+              const companiesCount = getCampaignCompanies(activeCampaign);
+              return (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-slate-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-slate-900">{companiesCount}</p>
+                    <p className="text-xs text-slate-500">Companies</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
+                    <p className="text-xs text-slate-500">Messages</p>
+                  </div>
+                  <div className="bg-emerald-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-emerald-600">{stats.sent}</p>
+                    <p className="text-xs text-slate-500">Sent</p>
+                  </div>
+                  <div className="bg-amber-50 rounded-xl p-4 text-center">
+                    <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
+                    <p className="text-xs text-slate-500">Pending</p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Messages list */}
+            {activeCampaign.messages && activeCampaign.messages.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-slate-900 mb-3">
+                  Recent Messages ({activeCampaign.messages.length})
+                </h4>
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {activeCampaign.messages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                            msg.type === 'EMAIL' ? 'bg-indigo-100' : 'bg-emerald-100'
+                          }`}
+                        >
+                          {msg.type === 'EMAIL' ? (
+                            <Mail className="w-4 h-4 text-indigo-600" />
+                          ) : (
+                            <MessageSquare className="w-4 h-4 text-emerald-600" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {msg.company?.name || 'Unknown Company'}
+                          </p>
+                          <p className="text-xs text-gray-500">{msg.stage}</p>
+                        </div>
+                      </div>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          ['SENT', 'DELIVERED', 'READ'].includes(msg.status)
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : msg.status === 'FAILED'
+                            ? 'bg-red-50 text-red-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {msg.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
 
       {/* Fetch Clients Modal */}
       {showFetchModal && (

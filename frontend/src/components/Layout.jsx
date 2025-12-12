@@ -190,10 +190,7 @@ export default function Layout({ children }) {
               )}
             </div>
 
-            {/* Divider */}
-            <div className="pt-3 pb-1">
-              <div className="border-t border-slate-200"></div>
-            </div>
+           
 
             {/* Settings */}
             <Link
