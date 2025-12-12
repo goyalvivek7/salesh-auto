@@ -23,6 +23,24 @@ class GPTService:
             
         self.client = OpenAI(api_key=api_key.strip() if api_key else None)
     
+    def _get_db_settings(self) -> Dict[str, str]:
+        """Get settings from database."""
+        try:
+            from app.database import SessionLocal
+            from app.models import SystemConfig
+            
+            db = SessionLocal()
+            settings_keys = ['sender_name', 'sender_position', 'company_name', 'company_description', 
+                           'company_website', 'sender_phone']
+            result = {}
+            for key in settings_keys:
+                config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+                result[key] = config.value if config else ""
+            db.close()
+            return result
+        except Exception:
+            return {}
+    
     def fetch_companies(self, industry: str, country: str, count: int) -> List[Dict[str, str]]:
         """
         Fetch company data from GPT API.
@@ -245,16 +263,25 @@ Only include the fields that were requested: {missing_fields}. Make the details 
         """
         from app.config import settings
         
+        # Get settings from database
+        db_settings = self._get_db_settings()
+        sender_name = db_settings.get('sender_name') or settings.sender_name or "Milan"
+        sender_position = db_settings.get('sender_position') or settings.sender_position or "Business Development Manager"
+        sender_company = db_settings.get('company_name') or settings.sender_company or settings.from_name
+        sender_phone = db_settings.get('sender_phone') or settings.sender_phone or ""
+        sender_website = db_settings.get('company_website') or settings.sender_website or ""
+        company_description = db_settings.get('company_description') or settings.company_description or "innovative software solutions"
+        
         # Build sender information
         sender_info = f"""
 Your Details (Use these in the email):
-- Your Name: {settings.sender_name or "Milan"}
-- Your Position: {settings.sender_position or "Business Development Manager"}
-- Your Company: {settings.sender_company or settings.from_name}
-- Your Phone: {settings.sender_phone or ""}
+- Your Name: {sender_name}
+- Your Position: {sender_position}
+- Your Company: {sender_company}
+- Your Phone: {sender_phone}
 - Your Email: {settings.from_email}
-- Your Website: {settings.sender_website or ""}
-- What You Offer: {settings.company_description or "innovative software solutions"}
+- Your Website: {sender_website}
+- What You Offer: {company_description}
 """
         
         details_str = ""
@@ -334,13 +361,15 @@ Make it persuasive, professional, and culturally appropriate for {country}. Use 
             
         except Exception as e:
             print(f"Error generating outreach content: {str(e)}")
-            # Fallback content with actual details
-            sender_name = settings.sender_name or "Milan"
-            sender_company = settings.sender_company or settings.from_name
+            # Fallback content with actual details from database
+            db_settings = self._get_db_settings()
+            fb_sender_name = db_settings.get('sender_name') or settings.sender_name or ""
+            fb_sender_company = db_settings.get('company_name') or settings.sender_company or settings.from_name or ""
+            fb_sender_position = db_settings.get('sender_position') or settings.sender_position or ""
             
             return {
                 "subject": f"Partnership opportunity with {company_name}",
-                "content": f"Hi {company_name} team,\\n\\nI'm {sender_name} from {sender_company}. We'd love to discuss how we can help your {industry} business in {country}.\\n\\nInterested in a quick call?"
+                "content": f"Hi {company_name} team,\\n\\nI'm {fb_sender_name} from {fb_sender_company}. We'd love to discuss how we can help your {industry} business in {country}.\\n\\nInterested in a quick call?\\n\\nBest regards,\\n{fb_sender_name}\\n{fb_sender_position}"
             }
     
     def generate_website_pitch(
@@ -368,16 +397,25 @@ Make it persuasive, professional, and culturally appropriate for {country}. Use 
         """
         from app.config import settings
         
+        # Get settings from database
+        db_settings = self._get_db_settings()
+        sender_name = db_settings.get('sender_name') or settings.sender_name or "Milan"
+        sender_position = db_settings.get('sender_position') or settings.sender_position or "Business Development Manager"
+        sender_company = db_settings.get('company_name') or settings.sender_company or settings.from_name
+        sender_phone = db_settings.get('sender_phone') or settings.sender_phone or ""
+        sender_website = db_settings.get('company_website') or settings.sender_website or ""
+        company_description = db_settings.get('company_description') or settings.company_description or "professional website development and digital solutions"
+        
         # Build sender information
         sender_info = f"""
 Your Details (Use these in the message):
-- Your Name: {settings.sender_name or "Milan"}
-- Your Position: {settings.sender_position or "Business Development Manager"}
-- Your Company: {settings.sender_company or settings.from_name}
-- Your Phone: {settings.sender_phone or ""}
+- Your Name: {sender_name}
+- Your Position: {sender_position}
+- Your Company: {sender_company}
+- Your Phone: {sender_phone}
 - Your Email: {settings.from_email}
-- Your Website: {settings.sender_website or ""}
-- What You Offer: {settings.company_description or "professional website development and digital solutions"}
+- Your Website: {sender_website}
+- What You Offer: {company_description}
 """
         
         prompt = f"""Generate a personalized {stage} {platform} message for {company_name}, a company in the {industry} industry located in {country}.
@@ -456,13 +494,15 @@ Make it persuasive, professional, and genuinely helpful. Use actual values, not 
             
         except Exception as e:
             print(f"Error generating website pitch: {str(e)}")
-            # Fallback content
-            sender_name = settings.sender_name or "Milan"
-            sender_company = settings.sender_company or settings.from_name
+            # Fallback content with database settings
+            db_settings = self._get_db_settings()
+            fb_sender_name = db_settings.get('sender_name') or settings.sender_name or ""
+            fb_sender_company = db_settings.get('company_name') or settings.sender_company or settings.from_name or ""
+            fb_sender_position = db_settings.get('sender_position') or settings.sender_position or ""
             
             return {
                 "subject": f"Website for {company_name}?",
-                "content": f"Hi {company_name} team,\\n\\nI'm {sender_name} from {sender_company}. We create professional websites for {industry} businesses.\\n\\nInterested in establishing your online presence?"
+                "content": f"Hi {company_name} team,\\n\\nI'm {fb_sender_name} from {fb_sender_company}. We create professional websites for {industry} businesses.\\n\\nInterested in establishing your online presence?\\n\\nBest regards,\\n{fb_sender_name}\\n{fb_sender_position}"
             }
 
 

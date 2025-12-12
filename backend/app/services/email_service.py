@@ -188,6 +188,7 @@ Would you be open to a quick 10-minute chat to discuss how we can help {company_
 Best regards,
 
 {sender_name}
+{sender_position}
 {sender_company}"""
                 }
             elif stage == "FOLLOWUP_1":
@@ -206,6 +207,7 @@ I'd love to share some ideas specifically for {company_name}. Are you available 
 Best regards,
 
 {sender_name}
+{sender_position}
 {sender_company}"""
                 }
             else: # FOLLOWUP_2
@@ -224,6 +226,7 @@ Wishing you all the best!
 Best regards,
 
 {sender_name}
+{sender_position}
 {sender_company}"""
                 }
         else: # SALES
@@ -241,6 +244,7 @@ Would you be interested in a brief introductory call to explore potential synerg
 Best regards,
 
 {sender_name}
+{sender_position}
 {sender_company}"""
                 }
             elif stage == "FOLLOWUP_1":
@@ -257,6 +261,7 @@ Do you have 10 minutes this week for a quick chat?
 Best regards,
 
 {sender_name}
+{sender_position}
 {sender_company}"""
                 }
             else: # FOLLOWUP_2
@@ -273,6 +278,7 @@ Best of luck with {company_name}!
 Best regards,
 
 {sender_name}
+{sender_position}
 {sender_company}"""
                 }
 

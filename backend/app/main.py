@@ -473,13 +473,22 @@ async def generate_campaign(
                     content = template["content"]
                     subject = template["subject"]
                     
+                    # Get sender settings from database
+                    sender_name_config = db.query(SystemConfig).filter(SystemConfig.key == "sender_name").first()
+                    company_name_config = db.query(SystemConfig).filter(SystemConfig.key == "company_name").first()
+                    sender_position_config = db.query(SystemConfig).filter(SystemConfig.key == "sender_position").first()
+                    db_sender_name = sender_name_config.value if sender_name_config else ""
+                    db_sender_company = company_name_config.value if company_name_config else ""
+                    db_sender_position = sender_position_config.value if sender_position_config else ""
+                    
                     replacements = {
                         "{company_name}": company.name or "",
                         "{contact_name}": "there",
                         "{industry}": company.industry or "",
                         "{country}": company.country or "",
-                        "{sender_name}": getattr(settings, 'sender_name', 'Milan'),
-                        "{sender_company}": getattr(settings, 'sender_company', 'TrueValueInfosoft')
+                        "{sender_name}": db_sender_name or getattr(settings, 'sender_name', '') or '',
+                        "{sender_company}": db_sender_company or getattr(settings, 'sender_company', '') or '',
+                        "{sender_position}": db_sender_position or getattr(settings, 'sender_position', '') or ''
                     }
                     for k, v in replacements.items():
                         content = content.replace(k, v)

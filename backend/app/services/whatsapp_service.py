@@ -207,10 +207,30 @@ class WhatsAppService:
         Returns:
             List of parameter values in order matching approved templates
         """
-        # Use passed values or fall back to config.py (for backward compatibility)
-        sender_name = sender_name or getattr(settings, 'sender_name', '') or ''
-        sender_company = sender_company or getattr(settings, 'sender_company', '') or ''
-        company_desc = company_desc or getattr(settings, 'company_description', '') or ''
+        # Get settings from database first, then fall back to passed values or config.py
+        try:
+            from app.database import SessionLocal
+            from app.models import SystemConfig
+            
+            db = SessionLocal()
+            
+            def get_db_setting(key, default=""):
+                config = db.query(SystemConfig).filter(SystemConfig.key == key).first()
+                return config.value if config else default
+            
+            db_sender_name = get_db_setting('sender_name', '')
+            db_sender_company = get_db_setting('company_name', '')
+            db_company_desc = get_db_setting('company_description', '')
+            db.close()
+        except Exception:
+            db_sender_name = ""
+            db_sender_company = ""
+            db_company_desc = ""
+        
+        # Use database values first, then passed values, then config fallback
+        sender_name = db_sender_name or sender_name or getattr(settings, 'sender_name', '') or ''
+        sender_company = db_sender_company or sender_company or getattr(settings, 'sender_company', '') or ''
+        company_desc = db_company_desc or company_desc or getattr(settings, 'company_description', '') or ''
         
         # These values come from Settings page - must be configured before sending
         # Fallback to generic values only if truly needed (prevents error 131008)
